@@ -43,6 +43,6 @@ def test_findings_sort_by_path_line_rule() -> None:
     assert early.render() == "a.py:1 z m"
 
 
-def test_verify_returns_no_findings_yet(tmp_path: Path) -> None:
-    """The engine has no checks registered yet."""
+def test_verify_without_packages_finds_nothing(tmp_path: Path) -> None:
+    """A path holding no client package yields no findings."""
     assert verify([tmp_path]) == []

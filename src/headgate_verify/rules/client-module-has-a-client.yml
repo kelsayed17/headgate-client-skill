@@ -1,0 +1,22 @@
+# Every client.py holds a client. Checks that read client methods look only inside a class that names
+# `AsyncBaseClient` in its bases, so a client.py whose client reaches the base another way (an alias, a dotted
+# `headgate.AsyncBaseClient`, a base imported under another name) would be read by nothing. This rule makes that
+# module fail instead of going quiet.
+#
+# Reported: a client.py with no class whose bases name `AsyncBaseClient` directly, by that bare name.
+id: client-module-has-a-client
+language: python
+severity: error
+message: a client.py defines at least one class based directly on AsyncBaseClient
+note: >-
+  The checks of client methods read a class only when it names `AsyncBaseClient` in its bases. Subclass it by that
+  bare name (`from headgate import AsyncBaseClient`), not through an alias or a dotted path.
+files:
+  - client.py
+rule:
+  kind: module
+  not:
+    has:
+      stopBy: end
+      kind: class_definition
+      has: {field: superclasses, has: {kind: identifier, regex: '^AsyncBaseClient$'}}
