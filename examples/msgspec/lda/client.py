@@ -110,13 +110,17 @@ class LdaClient(AsyncBaseClient):
     """Read lda.gov's filings, contribution reports, registrants, clients, lobbyists and constants lists."""
 
     def __init__(self, *, user_agent: str, transport: httpx2.AsyncBaseTransport | None = None) -> None:
-        """Identify every request as ``user_agent``; ``transport`` replaces the network, as a test does."""
+        """Identify every request as ``user_agent``, which headgate sends first, before its own product tokens.
+
+        ``transport`` replaces the network, as a test does.
+        """
         super().__init__(
             base_url=BASE_URL,
             rate=PACE,
             http=HttpOptions(
+                user_agent=user_agent,
                 transport=transport,
-                headers={"User-Agent": user_agent, "Accept": "application/json"},
+                headers={"Accept": "application/json"},
             ),
         )
 

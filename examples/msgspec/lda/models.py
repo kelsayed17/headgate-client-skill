@@ -19,8 +19,8 @@ with the offset sent (``2025-08-07T16:33:53-04:00``), and money (``income``, ``e
 percentages) to ``Decimal`` from the string the spec types as ``format: decimal``.
 
 **Not measured:** populated ``conviction_disclosures``, ``foreign_entities``, ``affiliated_organizations``, ``pacs``
-and ``contribution_items`` (every recorded body had them empty), and a non-null ``income`` or ``expenses``. Their
-structs are the spec's.
+and ``contribution_items`` (every recorded body had them empty), and a non-null ``income``. Their structs are the
+spec's.
 """
 
 import datetime as dt

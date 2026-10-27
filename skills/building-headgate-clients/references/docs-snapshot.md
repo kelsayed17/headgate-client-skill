@@ -81,6 +81,6 @@ Three requests in all (the docs page, a `406`, the spec), paced 10 seconds apart
 
 ## Then
 
-Every documented read needs a method. A client that covers only part of an API still snapshots the whole surface, so
-the snapshot stays a record of the docs rather than of the client; cover the rest, or say in the client's docstring
-which reads it leaves out and why, and expect the name check to report them.
+Cover every documented read: one method per `GET` in the snapshot, named as the name check derives it. The snapshot is
+a record of the docs, never trimmed to what the client happens to cover, so `test_method_names.py` passes only when
+every documented read has its method.

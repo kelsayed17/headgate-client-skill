@@ -3,10 +3,12 @@
 
 """Offline tests of ``LdaClient`` through its real headgate stack.
 
-Every body served here was recorded from lda.gov on 2026-10-27 (see the client's module docstring), with lists trimmed
-to two rows and a registrant's contact person and telephone, and a contribution report filer's street address and ZIP,
-replaced by ``REDACTED``. Each decode test asserts the request the client sent (host, path and query) and the decoded
-value, against a syrupy snapshot under ``__snapshots__/``.
+Every body served here but the 429 was recorded from lda.gov on 2026-10-27 (see the client's module docstring), with
+lists trimmed. These are replaced by ``REDACTED``: a registrant's contact person and telephone; a contribution report
+filer's street address and ZIP; a filing's ``posted_by_name`` (the staff member who posted it); and a filing's
+registrant street address and ZIP, at the filing's level and in its nested registrant. Each decode test asserts the
+request the client sent (host, path and query) and the decoded value, against a syrupy snapshot under
+``__snapshots__/``.
 """
 
 import json
@@ -16,7 +18,7 @@ from urllib.parse import urlsplit
 
 import httpx2
 import pytest
-from headgate import PageLimitError, UpstreamStatusError
+from headgate import PageLimitError, RateLimitError, UpstreamStatusError
 
 from examples.msgspec.lda.pagination import MAX_PAGES
 from examples.msgspec.lda.tests.conftest import USER_AGENT
@@ -151,13 +153,13 @@ async def test_read_decodes(lda: LdaClient, fake: FakeTransport, snapshot: Snaps
 
 
 async def test_sends_its_user_agent(lda: LdaClient, fake: FakeTransport) -> None:
-    """Every request names the caller's User-Agent and asks for JSON."""
+    """Every request names the caller's product first, headgate's own tokens after it, and asks for JSON."""
     fake.reply("GET", "/api/v1/constants/general/states/", recorded("constants_general_states.json"))
 
     await lda.get_constants_general_states()
 
     (request,) = fake.calls
-    assert request.headers["User-Agent"] == USER_AGENT
+    assert request.headers["User-Agent"].startswith(f"{USER_AGENT} headgate/")
     assert request.headers["Accept"] == "application/json"
 
 
@@ -170,6 +172,25 @@ async def test_paces_one_request_every_10_seconds(lda: LdaClient, fake: FakeTran
 
     assert len(fake.calls) == 2  # noqa: PLR2004 -- the two calls made
     assert clock.now == pytest.approx(10.0)
+
+
+async def test_throttle_raises_rate_limit_error(lda: LdaClient, fake: FakeTransport, clock: TestClock) -> None:
+    """A 429 whose ``Retry-After`` is past what a retry waits raises at once, carrying the delay, and is not re-sent."""
+    # Not recorded: provoking a 429 would break the terms. Body and Retry-After are the API docs' own example
+    # (https://lda.gov/api/redoc/v1/, "Request Throttling").
+    throttled = httpx2.Response(
+        429,
+        json={"detail": "Request was throttled. Expected available in 1596 seconds."},
+        headers={"Retry-After": "1596"},
+    )
+    fake.reply("GET", "/api/v1/constants/general/states/", throttled)
+
+    with pytest.raises(RateLimitError) as raised:
+        await lda.get_constants_general_states()
+
+    assert raised.value.retry_after == 1596  # noqa: PLR2004 -- the docs' Retry-After
+    assert len(fake.calls) == 1
+    assert clock.now == 0
 
 
 async def test_unknown_filing_is_none(lda: LdaClient, fake: FakeTransport) -> None:
@@ -212,6 +233,7 @@ async def test_walk_follows_the_next_url(lda: LdaClient, fake: FakeTransport, sn
         f"{API}/lobbyists/?registrant_id={REGISTRANT_ID}&page_size=16",
         f"{API}/lobbyists/?page=2&page_size=16&registrant_id={REGISTRANT_ID}",
     ]
+    assert fake.calls[1].headers["User-Agent"].startswith(f"{USER_AGENT} headgate/")
     assert rows == snapshot
 
 
