@@ -51,12 +51,23 @@ dev = [
     "ruff",
     "ty",
     "headgate[msgspec,pydantic]>=0.7.0",
+    "pytest-cov>=7.1.0",
 ]
 
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib --strict-markers"
 testpaths = ["tests", "examples"]
 pythonpath = ["."]
+
+[tool.coverage.run]
+branch = true
+source = ["headgate_verify"]
+
+[tool.coverage.report]
+# The measured floor (lines and branches); raise it with coverage, never lower it.
+fail_under = 94
+show_missing = true
+skip_covered = true
 
 [tool.ruff]
 line-length = 120
