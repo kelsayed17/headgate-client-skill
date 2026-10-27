@@ -3,14 +3,11 @@
 
 """Tests for the project configuration."""
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
 from headgate_verify.config import Config, ConfigError, load_config
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def _write(directory: Path, body: str) -> None:
@@ -79,4 +76,30 @@ def test_non_table_tool_is_config_error(tmp_path: Path) -> None:
     """A ``tool`` key that is not a table is a ConfigError, not a traceback."""
     _write(tmp_path, 'tool = "x"\n')
     with pytest.raises(ConfigError, match=r"\[tool\] must be a table"):
+        load_config(tmp_path)
+
+
+def test_non_utf8_pyproject_is_config_error(tmp_path: Path) -> None:
+    """A pyproject that is not UTF-8 is a ConfigError naming the file, not a traceback."""
+    (tmp_path / "pyproject.toml").write_bytes(b'[tool.headgate-verify]\nfiller-words = ["\xff"]\n')
+    with pytest.raises(ConfigError, match="is not UTF-8"):
+        load_config(tmp_path)
+
+
+def test_invalid_toml_is_config_error(tmp_path: Path) -> None:
+    """A pyproject that is not valid TOML is a ConfigError naming the file."""
+    _write(tmp_path, "[[\n")
+    with pytest.raises(ConfigError, match=r"pyproject\.toml is not valid TOML"):
+        load_config(tmp_path)
+
+
+def test_unreadable_pyproject_is_config_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A pyproject the OS refuses to read is a ConfigError saying why, not a traceback."""
+    _write(tmp_path, "")
+
+    def refuse(*_args: object, **_kwargs: object) -> str:
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(Path, "read_text", refuse)
+    with pytest.raises(ConfigError, match="cannot be read \\(Permission denied\\)"):
         load_config(tmp_path)

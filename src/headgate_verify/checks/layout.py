@@ -66,26 +66,46 @@ def _is_docstring(statement: SgNode) -> bool:
     return prefix is not None and not any(letter in prefix for letter in "ft")
 
 
-def _check_init(pkg: Package, modules: Modules, findings: list[Finding]) -> None:
+def _check_init(pkg: Package, modules: Modules) -> list[Finding]:
     path = pkg.root / _INIT
     if not path.is_file():
-        findings.append(_missing(pkg, f"the package {pkg.root.name} has no {_INIT}"))
-        return
+        return [_missing(pkg, f"the package {pkg.root.name} has no {_INIT}")]
     root = modules.get(path)
     if root is None:
-        return
+        return []
     body = statements(root.root())
     has_docstring = bool(body) and _is_docstring(body[0])
-    if not has_docstring:
-        findings.append(RULE.finding(path, 1, f"{_INIT} holds no docstring; it holds a docstring only"))
-    findings.extend(
+    findings = (
+        [] if has_docstring else [RULE.finding(path, 1, f"{_INIT} holds no docstring; it holds a docstring only")]
+    )
+    findings += [
         RULE.finding(
             path,
             line(statement),
             f"{_INIT} holds a docstring only; import from the module that defines a name, never through a re-export",
         )
         for statement in body[1 if has_docstring else 0 :]
-    )
+    ]
+    return findings
+
+
+def _check_required(pkg: Package) -> list[Finding]:
+    return [
+        _missing(pkg, f"the package {pkg.root.name} has no {name}")
+        for name in _REQUIRED
+        if not (pkg.root / name).is_file()
+    ]
+
+
+def _check_snapshot(pkg: Package) -> list[Finding]:
+    path = pkg.root / _DOCS
+    if not path.is_file():
+        return []
+    try:
+        load_snapshot(path)
+    except SnapshotError as error:
+        return [RULE.finding(path, 1, f"{_DOCS} is not a valid docs snapshot: {error}")]
+    return []
 
 
 def _test_dirs(pkg: Package) -> list[Path]:
@@ -96,60 +116,45 @@ def _test_dirs(pkg: Package) -> list[Path]:
     return list(dict.fromkeys(candidates))
 
 
-def _check_tests(pkg: Package, findings: list[Finding]) -> None:
+def _check_tests(pkg: Package) -> list[Finding]:
     candidates = _test_dirs(pkg)
     existing = [directory for directory in candidates if directory.is_dir()]
     if any(all((directory / name).is_file() for name in _TESTS) for directory in existing):
-        return
+        return []
     if not existing:
         looked = " or ".join(str(directory) for directory in candidates)
-        findings.append(_missing(pkg, f"the package {pkg.root.name} has no tests directory (looked for {looked})"))
-        return
+        return [_missing(pkg, f"the package {pkg.root.name} has no tests directory (looked for {looked})")]
     directory = existing[0]
-    findings.extend(
+    return [
         _missing(pkg, f"the tests directory {directory} has no {name}")
         for name in _TESTS
         if not (directory / name).is_file()
-    )
+    ]
 
 
-def _check_pagination(pkg: Package, modules: Modules, findings: list[Finding]) -> None:
+def _check_pagination(pkg: Package, modules: Modules) -> list[Finding]:
     if (pkg.root / _PAGINATION).is_file():
-        return
+        return []
     for path, root in sorted(modules.items()):
         call = root.root().find(pattern="self.paginate($$$)")
         if call is not None:
-            findings.append(
+            return [
                 RULE.finding(
                     path,
                     line(call),
                     f"the package calls self.paginate but has no {_PAGINATION}; its pagers and page budgets live there",
                 )
-            )
-            return
-
-
-def _check_snapshot(pkg: Package, findings: list[Finding]) -> None:
-    path = pkg.root / _DOCS
-    if not path.is_file():
-        return
-    try:
-        load_snapshot(path)
-    except SnapshotError as error:
-        findings.append(RULE.finding(path, 1, f"{_DOCS} is not a valid docs snapshot: {error}"))
+            ]
+    return []
 
 
 def check(pkg: Package, modules: Modules, config: Config) -> list[Finding]:
     """Return the ``package-layout`` findings of ``pkg``."""
     del config
-    findings: list[Finding] = []
-    _check_init(pkg, modules, findings)
-    findings.extend(
-        _missing(pkg, f"the package {pkg.root.name} has no {name}")
-        for name in _REQUIRED
-        if not (pkg.root / name).is_file()
-    )
-    _check_snapshot(pkg, findings)
-    _check_tests(pkg, findings)
-    _check_pagination(pkg, modules, findings)
-    return findings
+    return [
+        *_check_init(pkg, modules),
+        *_check_required(pkg),
+        *_check_snapshot(pkg),
+        *_check_tests(pkg),
+        *_check_pagination(pkg, modules),
+    ]

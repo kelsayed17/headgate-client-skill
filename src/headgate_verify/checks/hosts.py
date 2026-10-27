@@ -173,32 +173,36 @@ class _Base:
     host: str | None
 
 
-def _read_base(cls: _Class, modules: Modules, findings: list[Finding]) -> _Base | None:
+def _read_base(cls: _Class, modules: Modules) -> _Base | Finding:
+    """Return the class's base URL name and host, or the finding for a base URL that is missing or not a name."""
     value = _base_url(cls)
     if value is None:
-        findings.append(cls.finding(f"class {cls.name} passes no base_url= to super().__init__"))
-        return None
+        return cls.finding(f"class {cls.name} passes no base_url= to super().__init__")
     if value.kind() != "identifier" or value.text() not in _module_names(cls.root):
-        findings.append(
-            cls.finding(
-                f"class {cls.name} passes base_url={value.text()}, which is not a module-level name; name each host "
-                "once at module level and pass that name",
-                at=value,
-            )
+        return cls.finding(
+            f"class {cls.name} passes base_url={value.text()}, which is not a module-level name; name each host "
+            "once at module level and pass that name",
+            at=value,
         )
-        return None
     text = _constant_text(value.text(), cls.root, modules)
     return _Base(cls, value.text(), None if text is None else _host(text))
 
 
-def _check_bases(clients: list[_Class], findings: list[Finding]) -> set[str]:
-    """Report shared client bases and helper bases; return the names of classes in a client inheritance chain."""
+def _chained(clients: list[_Class]) -> set[str]:
+    """Return the names of the classes in a client inheritance chain: each subclass of a client class, and its base."""
     client_names = {cls.name for cls in clients}
-    chained: set[str] = set()
+    return {
+        name for cls in clients for base in cls.bases if base.text() in client_names for name in (cls.name, base.text())
+    }
+
+
+def _check_bases(clients: list[_Class]) -> list[Finding]:
+    """Report shared client bases and helper bases."""
+    client_names = {cls.name for cls in clients}
+    findings: list[Finding] = []
     for cls in clients:
         for base in cls.bases:
             if base.text() in client_names:
-                chained.update({cls.name, base.text()})
                 findings.append(
                     cls.finding(
                         f"class {cls.name} subclasses the client class {base.text()}; give each host its own class "
@@ -212,12 +216,14 @@ def _check_bases(clients: list[_Class], findings: list[Finding]) -> set[str]:
                         f"{_BASE} alone"
                     )
                 )
-    return chained
+    return findings
 
 
-def _check_distinct(bases: list[_Base], findings: list[Finding]) -> None:
+def _check_distinct(bases: list[_Base]) -> list[Finding]:
+    """Report each class whose base URL name, or host, another class's base URL already has."""
     by_name: dict[str, _Base] = {}
     by_host: dict[str, _Base] = {}
+    findings: list[Finding] = []
     for base in bases:
         cls = base.cls
         first = by_name.setdefault(base.name, base)
@@ -238,6 +244,7 @@ def _check_distinct(bases: list[_Base], findings: list[Finding]) -> None:
                     f"class {cls.name} calls host {base.host}, as class {first.cls.name} does; one class per host"
                 )
             )
+    return findings
 
 
 def _url_argument(call: SgNode) -> SgNode | None:
@@ -265,8 +272,10 @@ def _url_text(argument: SgNode, cls: _Class, modules: Modules) -> str | None:
     return None if value is None else string_body(value)
 
 
-def _check_verbs(cls: _Class, base: _Base | None, modules: Modules, findings: list[Finding]) -> None:
+def _check_verbs(cls: _Class, base: _Base | None, modules: Modules) -> list[Finding]:
+    """Report each absolute URL the class passes a verb on a host other than its base URL's."""
     host, base_name = (None, None) if base is None else (base.host, base.name)
+    findings: list[Finding] = []
     for call in cls.node.find_all(pattern="self.$VERB($$$)"):
         verb = call.get_match("VERB")
         if verb is None or verb.text() not in _VERBS:
@@ -288,19 +297,22 @@ def _check_verbs(cls: _Class, base: _Base | None, modules: Modules, findings: li
                 at=call,
             )
         )
+    return findings
 
 
 def check(pkg: Package, modules: Modules, config: Config) -> list[Finding]:
     """Return the ``one-class-per-host`` findings of ``pkg``."""
     del pkg, config
-    findings: list[Finding] = []
     clients = _client_classes(modules)
-    chained = _check_bases(clients, findings)
+    chained = _chained(clients)
+    findings = _check_bases(clients)
     read: list[_Base] = []
     for cls in clients:
-        base = None if cls.name in chained else _read_base(cls, modules, findings)
-        if base is not None:
+        base = None if cls.name in chained else _read_base(cls, modules)
+        if isinstance(base, _Base):
             read.append(base)
-        _check_verbs(cls, base, modules, findings)
-    _check_distinct(read, findings)
-    return findings
+        elif base is not None:
+            findings.append(base)
+            base = None
+        findings += _check_verbs(cls, base, modules)
+    return findings + _check_distinct(read)

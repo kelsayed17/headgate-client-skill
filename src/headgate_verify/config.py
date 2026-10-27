@@ -1,18 +1,25 @@
 # Copyright (c) 2026 Khaled Elsayed
 # SPDX-License-Identifier: MIT
 
-"""Verifier configuration, read from ``[tool.headgate-verify]`` in the nearest ``pyproject.toml``."""
+"""Verifier configuration, read from ``[tool.headgate-verify]`` in the nearest ``pyproject.toml``.
+
+``read_pyproject`` is the one reader of a ``pyproject.toml``: the config and the ``one-flavour`` check both use it.
+"""
 
 import tomllib
 from dataclasses import dataclass, fields
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
+class PyprojectError(ValueError):
+    """A ``pyproject.toml`` cannot be read, is not UTF-8 or is not valid TOML; the message names the file and why."""
+
+
 class ConfigError(ValueError):
-    """The ``[tool.headgate-verify]`` table is malformed; the message names the offending key."""
+    """The ``pyproject.toml`` holding the config cannot be read, or its table is malformed; the message says how."""
 
 
 @dataclass(frozen=True)
@@ -39,6 +46,23 @@ def nearest_pyproject(start: Path) -> Path | None:
     return None
 
 
+def read_pyproject(pyproject: Path) -> dict[str, Any]:
+    """Return the TOML in ``pyproject``; raise ``PyprojectError`` when it cannot be read, is not UTF-8 or not TOML."""
+    try:
+        text = pyproject.read_text(encoding="utf-8")
+    except UnicodeDecodeError as error:
+        msg = f"{pyproject} is not UTF-8 ({error.reason})"
+        raise PyprojectError(msg) from error
+    except OSError as error:
+        msg = f"{pyproject} cannot be read ({error.strerror or error})"
+        raise PyprojectError(msg) from error
+    try:
+        return tomllib.loads(text)
+    except tomllib.TOMLDecodeError as error:
+        msg = f"{pyproject} is not valid TOML ({error})"
+        raise PyprojectError(msg) from error
+
+
 def load_config(start: Path) -> Config:
     """Return the config from the nearest ``pyproject.toml`` at or above ``start``; defaults if none or no table."""
     pyproject = nearest_pyproject(start)
@@ -47,10 +71,9 @@ def load_config(start: Path) -> Config:
 
 def _from_file(pyproject: Path) -> Config:
     try:
-        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-    except tomllib.TOMLDecodeError as error:
-        msg = f"{pyproject}: not valid TOML: {error}"
-        raise ConfigError(msg) from error
+        data = read_pyproject(pyproject)
+    except PyprojectError as error:
+        raise ConfigError(str(error)) from error
     tool = data.get("tool", {})
     if not isinstance(tool, dict):
         msg = f"{pyproject}: [tool] must be a table"

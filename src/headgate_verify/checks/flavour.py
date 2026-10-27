@@ -21,14 +21,13 @@ set nothing. Reported:
 A package importing neither flavour declares nothing and is not reported.
 """
 
-import tomllib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
-from headgate_verify.config import nearest_pyproject
+from headgate_verify.config import PyprojectError, nearest_pyproject, read_pyproject
 from headgate_verify.finding import Rule
 from headgate_verify.syntax import imported_names, line
 
@@ -152,15 +151,9 @@ def _declares(entries: list[object], flavour: Flavour) -> bool:
 def _entries(pyproject: Path) -> list[object] | str:
     """Return the requirement entries of ``pyproject``, or why it cannot be read for them."""
     try:
-        text = pyproject.read_text(encoding="utf-8")
-    except UnicodeDecodeError as error:
-        return f"{pyproject} is not UTF-8 ({error.reason})"
-    except OSError as error:
-        return f"{pyproject} cannot be read ({error.strerror or error})"
-    try:
-        return _requirements(tomllib.loads(text))
-    except tomllib.TOMLDecodeError as error:
-        return f"{pyproject} is not valid TOML ({error})"
+        return _requirements(read_pyproject(pyproject))
+    except PyprojectError as error:
+        return str(error)
     except _MalformedError as error:
         return f"{pyproject}: {error}"
 
