@@ -92,6 +92,21 @@ def test_files_globs_scope_a_rule(tmp_path: Path) -> None:
     assert [finding.path.name for finding in found] == ["models.py"]
 
 
+def test_skip_packages_in_exempts_a_package_by_name(tmp_path: Path) -> None:
+    """A rule with ``skip-packages-in: <field>`` does not run in a package whose directory is named in that field."""
+    _write(tmp_path / "cboe", "client.py", "api = 1\n")
+    _write(tmp_path / "fred", "client.py", "api = 1\n")
+    pkgs = find_packages([tmp_path])
+    rule = rule_from_yaml(
+        _FILLER_RULE.replace("rule:", "skip-packages-in: browser_user_agent_packages\nrule:"), "filler-name"
+    )
+    config = Config(browser_user_agent_packages=frozenset({"cboe"}))
+    found = [finding for pkg in pkgs for finding in run_rules(pkg, [rule], config)]
+    assert [finding.path.parent.name for finding in found] == ["fred"]
+    with pytest.raises(ValueError, match="no_such_field"):
+        rule_from_yaml(_FILLER_RULE.replace("rule:", "skip-packages-in: no_such_field\nrule:"), "filler-name")
+
+
 def test_unparseable_file_is_a_finding(tmp_path: Path) -> None:
     """An unparseable module is one parse-error finding and nothing else; the modules beside it are still checked."""
     client = _write(tmp_path, "client.py", "def (:\n")

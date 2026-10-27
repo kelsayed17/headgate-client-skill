@@ -1,0 +1,45 @@
+# A client package reads nothing from the environment: credentials, hosts and identities are constructor arguments.
+# headgate itself reads no proxy variable, no `.netrc` and no `SSL_CERT_FILE`; a client that reads `os.environ` makes
+# a test, a second instance and a caller with two accounts all depend on process state. The code that builds the
+# client reads its settings and passes them in.
+#
+# Reported:
+#   * an attribute `os.environ`, `os.environb`, `os.getenv`, `os.getenvb`, `os.putenv` or `os.unsetenv`, however it is
+#     used (`os.environ.get(...)`, `os.environ[...]`, a default argument);
+#   * `import dotenv` / `import dotenv.x` (aliased or not) and `from dotenv... import ...`;
+#   * `from os import environ` (and `environb`, `getenv`, `getenvb`, `putenv`, `unsetenv`), aliased or not, and
+#     `from os import *`.
+#
+# DISCLOSED: `import os as o` then `o.environ` is not read, nor is a name reached through `getattr`; `os.environ`
+# named in a string or docstring is text, not a read.
+id: client-reads-no-environment
+language: python
+severity: error
+message: a client package reads no environment variable and loads no .env; credentials are constructor arguments
+note: >-
+  Take the value as a constructor argument and let the code that builds the client read its settings.
+files:
+  - '*.py'
+rule:
+  any:
+    - kind: attribute
+      all:
+        - has: {field: object, kind: identifier, regex: '^os$'}
+        - has: {field: attribute, kind: identifier, regex: '^(environ|environb|getenv|getenvb|putenv|unsetenv)$'}
+    - kind: import_statement
+      has:
+        field: name
+        any:
+          - {kind: dotted_name, regex: '^dotenv(\.|$)'}
+          - {kind: aliased_import, has: {field: name, kind: dotted_name, regex: '^dotenv(\.|$)'}}
+    - kind: import_from_statement
+      has: {field: module_name, kind: dotted_name, regex: '^dotenv(\.|$)'}
+    - kind: import_from_statement
+      has: {field: module_name, kind: dotted_name, regex: '^os$'}
+      any:
+        - has: {kind: wildcard_import}
+        - has:
+            any:
+              - {kind: dotted_name, regex: '^(environ|environb|getenv|getenvb|putenv|unsetenv)$'}
+              - kind: aliased_import
+                has: {field: name, kind: dotted_name, regex: '^(environ|environb|getenv|getenvb|putenv|unsetenv)$'}

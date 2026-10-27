@@ -1,0 +1,60 @@
+# A browser-spoof User-Agent literal only where a host forces one.
+#
+# The ONE kind of UA literal a client may hold is a generic `Mozilla/... Chrome/...` string that HIDES the caller's
+# identity from a host that rejects the honest token. It carries no contact and is traceable to no one, so it is
+# allowed per package, never everywhere: `browser_user_agent_packages` in `[tool.headgate-verify]` names the packages
+# (the directory holding `client.py`) whose host forces one, and the rule does not run in them.
+#
+# Reported: a string literal that is not a docstring and starts with `Mozilla/`, unless it carries an identity clause
+# (`; Name/1.0`, as in `Mozilla/5.0 (compatible; Name/1.0)`), which is `client-no-identity-user-agent`'s. Each literal
+# part of a plain, bytes, f- or t-string is read on its own (so `f"{x}Mozilla/5.0"` is reported), and an implicit
+# concatenation is read JOINED, from its first character or from right after an interpolation (`"Moz" f"illa/{v}"` and
+# `f"{x}" "Moz" "illa/"` are reported). The joined regex is the token with an optional BREAK between every two
+# characters, as in `client-no-placeholder-contact`.
+#
+# Exempt: docstrings, defined as in `client-no-placeholder-contact`. A literal that only CONTAINS `Mozilla/` past its
+# first character is not a UA.
+#
+# DISCLOSED: an escape-encoded character is read as written. A concatenation whose SECOND part starts with
+# `Mozilla/` (its joined value does not start so) is reported, as an over-approximation.
+id: client-browser-user-agent-only-where-allowed
+language: python
+severity: error
+message: a browser-spoof User-Agent literal is allowed only in a package whose host forces it
+note: >-
+  A generic browser spoof is the only UA literal allowed, and only in a package listed in
+  `browser_user_agent_packages` that names the host forcing it.
+files:
+  - '*.py'
+skip-packages-in: browser_user_agent_packages
+utils:
+  # A literal with no f/t prefix (a docstring candidate): one string, or a concatenation of them.
+  plain-literal:
+    any:
+      - {kind: string, has: {kind: string_start, not: {regex: '[fFtT]'}}}
+      - {kind: concatenated_string, not: {has: {kind: string, has: {kind: string_start, regex: '[fFtT]'}}}}
+  docstring:
+    kind: expression_statement
+    nthChild: {position: 1, ofRule: {not: {kind: comment}}}
+    inside:
+      any:
+        - {kind: module}
+        - {kind: block, inside: {any: [{kind: class_definition}, {kind: function_definition}]}}
+    has:
+      any:
+        - matches: plain-literal
+        - {kind: parenthesized_expression, has: {stopBy: {not: {kind: parenthesized_expression}}, matches: plain-literal}}
+    not: {has: {nthChild: 2}}
+rule:
+  not: {inside: {stopBy: end, matches: docstring}}
+  any:
+    - kind: string_content
+      regex: '^Mozilla/'
+      not:
+        any:
+          - {regex: ';\s*[A-Z][A-Za-z0-9_.\-]*/\d'}
+          # a part of a concatenation whose joined value carries an identity clause
+          - {inside: {kind: concatenated_string, stopBy: end, regex: ';(?:\s|["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})*[A-Z](?:[\w.\-]|["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})*(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?/(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?\d'}}
+    - kind: concatenated_string
+      not: {regex: ';(?:\s|["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})*[A-Z](?:[\w.\-]|["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})*(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?/(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?\d'}
+      regex: '(?:^[a-zA-Z]{0,2}["\'']{1,3}|\}(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?)M(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?o(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?z(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?i(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?l(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?l(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?a(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?/'

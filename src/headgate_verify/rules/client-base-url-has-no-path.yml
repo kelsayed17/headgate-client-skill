@@ -1,0 +1,99 @@
+# A base URL is a host, never a path (`urlsplit().path` of the value is empty once `/` is stripped).
+#
+# Reported: a `base_url=` keyword, in any call, whose value is a string literal with a path, or a name, a `self.<attr>`
+# or a conditional that resolves (one module-level assignment, or a class attribute and then a module-level one) to
+# one. A path is read as `urlsplit` reads it: with a scheme and `//netloc`, a scheme and a path straight after the
+# colon, or no scheme at all. A query or fragment with slashes in it is not a path. An escape sequence or an implicit
+# concatenation of plain strings is read as a path (an over-approximation). The condition of a conditional is not read.
+#
+# Not read (`client-base-url` keeps those a name): a parameter, a module attribute, a call, an f-string.
+#
+# Ported without the source project's inline ignore for a feed whose path IS the resource; write an allow comment.
+id: client-base-url-has-no-path
+language: python
+severity: error
+message: base_url carries a path — move the prefix into the method (declare it once as a module constant if it repeats)
+note: >-
+  A base URL is a host; a path prefix in it makes two prefixes on one host look like two hosts. Move the prefix into the
+  method, or declare it once as a module constant if it repeats.
+files:
+  - 'client.py'
+utils:
+  # A str literal whose urlsplit().path, stripped of '/', is non-empty.
+  url-with-path:
+    any:
+      - kind: string
+        all:
+          - has: {kind: string_start, not: {regex: '[fFtTbB]'}}
+          - has:
+              kind: string_content
+              any:
+                # an escape can spell any character, so it is read as a path (an over-approximation)
+                - has: {kind: escape_sequence}
+                # a scheme, then `//netloc` and a path, or a path straight after the colon
+                - regex: '^[A-Za-z][A-Za-z0-9+.-]*:(//[^/?#]*/+[^/?#]|/?[^/?#])'
+                # no scheme: urlsplit reads the whole text, `//netloc` first if it starts so
+                - all:
+                    - not: {regex: '^[A-Za-z][A-Za-z0-9+.-]*:'}
+                    - regex: '^(//[^/?#]*/+[^/?#]|/?[^/?#])'
+      # an implicit concatenation of plain strings is read as a path (an over-approximation)
+      - kind: concatenated_string
+        not: {has: {kind: string, has: {kind: string_start, regex: '[fFtTbB]'}}}
+      - {kind: parenthesized_expression, has: {matches: url-with-path}}
+  # what a (possibly chained, possibly annotated) assignment finally binds
+  bound-path:
+    any:
+      - matches: url-with-path
+      - {kind: assignment, has: {field: right, matches: bound-path}}
+  resolved:
+    any:
+      - matches: url-with-path
+      - all:
+          - {kind: identifier, pattern: $N}
+          - inside:
+              kind: module
+              stopBy: end
+              has:
+                stopBy: end
+                kind: assignment
+                all:
+                  - has: {field: left, pattern: $N}
+                  - has: {field: right, matches: bound-path}
+      - all:
+          - kind: attribute
+          - has: {field: object, regex: '^self$'}
+          - has: {field: attribute, pattern: $A}
+          - inside:
+              kind: module
+              stopBy: end
+              has:
+                stopBy: end
+                kind: assignment
+                all:
+                  - has: {field: left, pattern: $A}
+                  - has:
+                      field: right
+                      any:
+                        - matches: bound-path
+                        - all:
+                            - {kind: identifier, pattern: $C}
+                            - inside:
+                                kind: module
+                                stopBy: end
+                                has:
+                                  stopBy: end
+                                  kind: assignment
+                                  all:
+                                    - has: {field: left, pattern: $C}
+                                    - has: {field: right, matches: bound-path}
+      - {kind: parenthesized_expression, has: {matches: resolved}}
+      # either branch, never the condition (the middle operand)
+      - kind: conditional_expression
+        has:
+          matches: resolved
+          not: {nthChild: {position: 2, ofRule: {not: {kind: comment}}}}
+rule:
+  kind: keyword_argument
+  all:
+    - has: {field: name, regex: '^base_url$'}
+    - has: {field: value, matches: resolved}

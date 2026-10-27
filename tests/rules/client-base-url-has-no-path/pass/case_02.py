@@ -1,0 +1,15 @@
+class C(AsyncBaseClient):
+    def __init__(self) -> None:
+        T(base_url="https://api.example.org/")
+        T(base_url="http://internal")
+        T(base_url="https://h.example.org:8443")
+        T(base_url="https://h.example.org/?q=/x")
+        T(base_url="https://h.example.org?a=/b")
+        T(base_url="https://h.example.org#/frag")
+        T(base_url="https://h.example.org//")
+        T(base_url="")
+        T(base_url="/")
+        T(base_url="?q=1")
+        T(base_url=r"https://h.example.org")
+        T(source_base_url="https://h.example.org/v1")
+        T(base_url=("https://" f"{host}"))

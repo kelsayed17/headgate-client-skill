@@ -1,0 +1,95 @@
+# Nothing hand-sets a User-Agent beside a TLS-impersonating transport. The first half of the rule is
+# `client-impersonating-transport-owns-its-headers`.
+#
+# Scope: every module that CALLS `AsyncCurlTransport` (bare or as an attribute) anywhere. A module that does not is
+# untouched: a client that sets a browser UA over plain httpx has no fingerprint for it to disagree with.
+#
+# Reported, in such a module:
+#   * any string literal starting with `Mozilla/`, anywhere, docstrings included; each literal part of a plain, bytes,
+#     f- or t-string is read on its own, and an interpolation-free implicit concatenation JOINED from its first
+#     character, as in `client-no-placeholder-contact`;
+#   * a literal that is exactly `User-Agent`, read the same way, unless it sits inside a class that reaches the
+#     transport NEITHER by calling `AsyncCurlTransport` itself NOR by calling a top-level function of the module that
+#     does. Such a class rides plain httpx: a plain websocket client may declare its own honest identity from the same
+#     client.py as two impersonating clients. Every other `User-Agent` in the module is reported: at module level, in
+#     an impersonating class, in a function;
+#   * a `user_agent=` keyword of a call to `HttpOptions` (bare or as an attribute), under the same class exemption as
+#     a `User-Agent` literal. headgate sends it as a product token before its own, and its curl transport strips only
+#     headgate's DEFAULT User-Agent under `default_headers=True`, so a product token reaches the wire beside the
+#     browser handshake.
+# A class reaches the transport through anything in it, at any depth (a method, a nested class), and a builder is a
+# top-level `def` or `async def`, decorated or not, whose body, decorators or defaults call `AsyncCurlTransport`.
+#
+# DISCLOSED: the header name is matched exactly, so a lowercase `user-agent` key is not read; a builder reached
+# through another builder (two hops) does not make a class impersonating.
+id: client-no-user-agent-beside-impersonation
+language: python
+severity: error
+message: a module building an AsyncCurlTransport names no User-Agent where it could ride the impersonating transport
+note: >-
+  The handshake's browser version is whatever curl_cffi's rolling alias resolves to today; a UA written beside it is a
+  second source of truth that goes stale on the next bump. Let default_headers=True supply it.
+files:
+  - '*.py'
+utils:
+  curl-call:
+    kind: call
+    has:
+      field: function
+      any:
+        - {kind: identifier, regex: '^AsyncCurlTransport$'}
+        - {kind: attribute, has: {field: attribute, regex: '^AsyncCurlTransport$'}}
+  # A call to a top-level function of this module that builds the transport.
+  builder-call:
+    kind: call
+    all:
+      - has:
+          field: function
+          any:
+            - {kind: identifier, pattern: $BUILDER}
+            - {kind: attribute, has: {field: attribute, pattern: $BUILDER}}
+      - inside:
+          kind: module
+          stopBy: end
+          has:
+            any:
+              - kind: function_definition
+                all:
+                  - has: {field: name, pattern: $BUILDER}
+                  - has: {stopBy: end, matches: curl-call}
+              - kind: decorated_definition
+                all:
+                  - has: {field: definition, kind: function_definition, has: {field: name, pattern: $BUILDER}}
+                  - has: {stopBy: end, matches: curl-call}
+  impersonating-class:
+    kind: class_definition
+    any:
+      - has: {stopBy: end, any: [{matches: curl-call}, {matches: builder-call}]}
+      - inside: {kind: decorated_definition, has: {stopBy: end, any: [{matches: curl-call}, {matches: builder-call}]}}
+  mozilla-literal:
+    any:
+      - {kind: string, has: {kind: string_content, regex: '^Mozilla/'}}
+      - {kind: concatenated_string, regex: '(?:^[a-zA-Z]{0,2}["'']{1,3}|\}(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?)M(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?o(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?z(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?i(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?l(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?l(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?a(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?/'}
+  # headgate's own User-Agent knob: `HttpOptions(user_agent=...)`.
+  user-agent-option:
+    kind: keyword_argument
+    has: {field: name, regex: '^user_agent$'}
+    inside:
+      kind: argument_list
+      inside:
+        kind: call
+        has:
+          field: function
+          any:
+            - {kind: identifier, regex: '^HttpOptions$'}
+            - {kind: attribute, has: {field: attribute, regex: '^HttpOptions$'}}
+  user-agent-literal:
+    any:
+      - {kind: string, has: {kind: string_content, regex: '^User-Agent$'}}
+      - {kind: concatenated_string, regex: '(?:^[a-zA-Z]{0,2}["'']{1,3}|\}(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?)U(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?s(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?e(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?r(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?\-(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?A(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?g(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?e(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?n(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?t(?:["'']{1,3}$|(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?\{)'}
+rule:
+  inside: {kind: module, stopBy: end, has: {stopBy: end, matches: curl-call}}
+  any:
+    - matches: mozilla-literal
+    - any: [{matches: user-agent-literal}, {matches: user-agent-option}]
+      not: {inside: {kind: class_definition, stopBy: end, not: {matches: impersonating-class}}}

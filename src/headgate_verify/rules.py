@@ -8,6 +8,9 @@ A rule file keeps ast-grep's own keys, so it reads like any ast-grep rule: ``id`
 ``constraints``, ``utils`` and ``transform``, plus the informational ``language`` (``python`` only) and ``note``.
 The last four of ast-grep's keys go to ast-grep-py unchanged.
 
+One key is this tool's own: ``skip-packages-in: <field>`` names a ``Config`` field holding package names (the name of
+the directory that holds ``client.py``); the rule does not run in a package so named.
+
 A rule that needs a project list reads a ``Config`` field through a ``{{config.<field>}}`` placeholder, which must sit
 inside a single-quoted YAML string (in practice a ``regex``). Before the YAML is parsed, the placeholder is replaced by
 an alternation of the field's values, each escaped, so ``'^({{config.filler_words}})$'`` matches any one filler word;
@@ -45,7 +48,7 @@ _LANGUAGE = "python"
 _DEFAULT_FILES = ("**/*.py",)
 _SEVERITIES: dict[str, Severity] = {"error": "error", "warning": "warning"}
 _REQUIRED_KEYS = frozenset({"id", "message", "severity", "rule"})
-_KNOWN_KEYS = _REQUIRED_KEYS | {"language", "note", "files", "constraints", "utils", "transform"}
+_KNOWN_KEYS = _REQUIRED_KEYS | {"language", "note", "files", "constraints", "utils", "transform", "skip-packages-in"}
 _PLACEHOLDER = re.compile(r"\{\{config\.(\w+)\}\}")
 _MATCH_NOTHING = r"[^\s\S]"
 
@@ -62,6 +65,8 @@ class YamlRule:
     """The YAML's ``rule``/``constraints``/``utils``/``transform``, with placeholders filled from ``Config()``."""
     source: str = field(default="", repr=False, compare=False)
     """The YAML text, re-read with each run's ``Config`` when it holds a ``{{config.<field>}}`` placeholder."""
+    skip_packages_in: str | None = None
+    """The ``Config`` field naming the packages this rule does not run in."""
 
     def applies_to(self, relative: PurePath) -> bool:
         """Return whether a module at ``relative`` to the package root matches one of the rule's ``files`` globs."""
@@ -125,6 +130,10 @@ def rule_from_yaml(text: str, rule_id: str) -> YamlRule:
     if not isinstance(globs, list | tuple) or not all(isinstance(glob, str) for glob in globs):
         msg = f"rule {rule_id}: files must be a list of globs"
         raise ValueError(msg)
+    skip_packages_in = data.get("skip-packages-in")
+    if skip_packages_in is not None and skip_packages_in not in config_fields:
+        msg = f"rule {rule_id}: skip-packages-in names no Config field: {skip_packages_in!r}"
+        raise ValueError(msg)
     return YamlRule(
         id=rule_id,
         message=str(data["message"]),
@@ -132,6 +141,7 @@ def rule_from_yaml(text: str, rule_id: str) -> YamlRule:
         files=tuple(globs),
         config=_sg_config(text, Config()),
         source=text,
+        skip_packages_in=skip_packages_in,
     )
 
 
@@ -210,6 +220,8 @@ def run_rules(pkg: Package, rules: Sequence[YamlRule], config: Config) -> list[F
     findings: list[Finding] = []
     modules = parse(pkg)
     for rule in rules:
+        if rule.skip_packages_in is not None and pkg.root.name in getattr(config, rule.skip_packages_in):
+            continue
         sg_config = _effective_config(rule, config)
         for path, root in modules.items():
             if not rule.applies_to(PurePath(path.relative_to(pkg.root))):

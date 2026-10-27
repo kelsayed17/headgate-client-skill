@@ -1,0 +1,60 @@
+# A client takes a `transport` and hands it to headgate, the seam the offline tests use.
+#
+# Tests run a client through its real headgate stack with `headgate.testing.FakeTransport` (or any
+# `httpx2.AsyncBaseTransport`) passed as `transport=`. A client that builds its own transport and offers no way in
+# forces every test to patch module state.
+#
+# Reported, at the class line: a class based directly on `AsyncBaseClient` (bare or dotted) that
+#   * has no `__init__` with a parameter named `transport` (positional, keyword-only, annotated or not, with or
+#     without a default); or
+#   * has no call to `HttpOptions` (bare or as an attribute) with the keyword `transport=transport` in its body.
+# A class based on a `_` base is not asked again: it inherits the base's constructor, and the base is checked.
+#
+# DISCLOSED: a transport handed to `HttpOptions` through a name other than `transport`, a prebuilt `http=` parameter
+# or `**kwargs` is reported, as is a client that forwards `transport` somewhere other than `HttpOptions`.
+id: client-accepts-transport
+language: python
+severity: error
+message: a client's __init__ takes a `transport` parameter and passes it as HttpOptions(transport=transport)
+note: >-
+  `def __init__(self, *, transport: httpx2.AsyncBaseTransport | None = None)` and
+  `super().__init__(base_url=_BASE_URL, http=HttpOptions(transport=transport))`. Tests pass a
+  `headgate.testing.FakeTransport` there.
+files:
+  - 'client.py'
+utils:
+  direct-client:
+    kind: class_definition
+    has:
+      field: superclasses
+      has: {any: [{kind: identifier, regex: '^AsyncBaseClient$'}, {kind: attribute, regex: '\.AsyncBaseClient$'}]}
+  transport-parameter:
+    any:
+      - {kind: identifier, regex: '^transport$'}
+      - {kind: typed_parameter, has: {kind: identifier, regex: '^transport$'}}
+      - {any: [{kind: default_parameter}, {kind: typed_default_parameter}], has: {field: name, regex: '^transport$'}}
+  takes-transport:
+    kind: function_definition
+    has: {field: name, regex: '^__init__$'}
+    all:
+      - has: {field: parameters, has: {matches: transport-parameter}}
+  forwards-transport:
+    kind: call
+    has:
+      field: function
+      any:
+        - {kind: identifier, regex: '^HttpOptions$'}
+        - {kind: attribute, has: {field: attribute, regex: '^HttpOptions$'}}
+    all:
+      - has:
+          field: arguments
+          has:
+            kind: keyword_argument
+            all:
+              - has: {field: name, regex: '^transport$'}
+              - has: {field: value, kind: identifier, regex: '^transport$'}
+rule:
+  matches: direct-client
+  any:
+    - not: {has: {stopBy: end, matches: takes-transport}}
+    - not: {has: {stopBy: end, matches: forwards-transport}}

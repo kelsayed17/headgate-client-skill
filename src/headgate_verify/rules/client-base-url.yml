@@ -1,0 +1,23 @@
+# A client's base URL is a name, so its configuration reads as one block of constants.
+#
+# Reported: any `base_url=` keyword, in any call, whose value is not a name or an attribute (`_BASE_URL`,
+# `self._BASE`, a `base_url` parameter, `hosts.FRED`). A string, f-string, concatenation or call is reported. The
+# value is checked; a class attribute holding a literal is a `client-method-shape` matter.
+#
+# Ported without the source project's `ignores:` entry (one module of 26 one-endpoint publisher classes that pass a
+# literal host on purpose). A client that wants the same exemption writes an allow comment on the line.
+#
+# DISCLOSED: a literal DEFAULT on a `base_url` parameter is not a `base_url=` keyword, so it is not read.
+id: client-base-url
+language: python
+severity: error
+message: a client's base URL is a name, never a literal or an expression
+note: >-
+  Name the host (`_BASE_URL`, or a per-class prefix in a multi-class package) so a reader finds the client's
+  configuration in one block.
+files:
+  - 'client.py'
+rule:
+  kind: keyword_argument
+  has: {field: name, regex: '^base_url$'}
+  not: {has: {field: value, any: [{kind: identifier}, {kind: attribute}]}}

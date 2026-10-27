@@ -1,0 +1,50 @@
+# The client constructor. Reported:
+#   * a class based directly on `AsyncBaseClient` (bare or dotted) with no `super().__init__(...)` passing `rate=`,
+#     anywhere in its body. headgate defaults `rate` to `UNLIMITED`, so nothing else catches a client that paces
+#     nothing; a client declares its provider's quota (`Rate.per_second(2)`) or an allow comment saying it has none. A
+#     class based on a `_` base inherits the base's budget and is not asked again;
+#   * any initialiser reached any way but `super().__init__(...)`: `super(Cls, self).__init__`,
+#     `AsyncBaseClient.__init__(self, ...)`, a re-init from another method;
+#   * that `super().__init__(...)` taking a `*` or `**` splat, which no check could read the rate through.
+# `rate=` inside a nested call (`HttpOptions(transport=T(rate=...))`), on another call in the class, or a keyword that
+# only begins with the word (`rate_limit=`) is not the client's rate. The policy's `rate_limits=` holds path rules, not
+# the client-wide budget.
+# KNOWN GAP: a subclass whose own `__init__` never calls its base's is not read here.
+id: client-constructor
+language: python
+severity: error
+message: a client passes its rate as `rate=` in its one `super().__init__(...)`, with no splat
+note: >-
+  `super().__init__(base_url=_BASE_URL, rate=Rate.per_second(_MAX_RATE_PER_SEC))`, once, with no splat. Exempt a
+  client with no quota to declare by an allow comment on the class line.
+files:
+  - 'client.py'
+utils:
+  direct-client:
+    kind: class_definition
+    has:
+      field: superclasses
+      has: {any: [{kind: identifier, regex: '^AsyncBaseClient$'}, {kind: attribute, regex: '\.AsyncBaseClient$'}]}
+  super-init:
+    kind: call
+    pattern: super().__init__($$$)
+  silent-client:
+    matches: direct-client
+    not:
+      has:
+        stopBy: end
+        matches: super-init
+        has: {field: arguments, has: {kind: keyword_argument, has: {field: name, regex: '^rate$'}}}
+  other-init:
+    kind: call
+    has: {field: function, kind: attribute, regex: '\.__init__$'}
+    not: {matches: super-init}
+  splat-init:
+    matches: super-init
+    inside: {stopBy: end, matches: direct-client}
+    has: {field: arguments, has: {any: [{kind: dictionary_splat}, {kind: list_splat}]}}
+rule:
+  any:
+    - matches: silent-client
+    - matches: other-init
+    - matches: splat-init

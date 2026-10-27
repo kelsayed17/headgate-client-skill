@@ -1,0 +1,69 @@
+# A self-identifying User-Agent is never a source literal.
+# The User-Agent (product token plus contact) is deployment configuration: the code that builds the client composes
+# it and passes it in (`client-user-agent-has-no-default` keeps the parameter required), so neither the token nor the
+# contact is a literal in a client package. The browser-spoof half is `client-browser-user-agent-only-where-allowed`.
+#
+# Reported: a string literal that is not a docstring and holds a contact clause (`(+mailto:`, `(+http://`,
+# `(+https://`, spaces allowed after the `+`) or a product token: `Name/<digit>` (a capital first letter) that starts
+# the literal, or follows a `;` as in `Mozilla/5.0 (compatible; Name/1.0)`. `Mozilla/` and `HTTP/` at the start are
+# not product tokens. Literals are read as in `client-no-placeholder-contact`: each literal part of a plain, bytes, f-
+# or t-string, an f-string format spec, and an implicit concatenation JOINED (the token with an optional break between
+# every two characters), unless the token is in an interpolation's code.
+#
+# Exempt: docstrings, defined as in `client-no-placeholder-contact`.
+#
+# DISCLOSED: an escape-encoded character is read as written. A product token in the MIDDLE of a literal, with no `;`
+# before it, is not read (`"x Name/1.0"`): browser strings end in `Chrome/150.0` and `Safari/537.36`, and ast-grep's
+# regex has no lookbehind to tell them apart.
+id: client-no-identity-user-agent
+language: python
+severity: error
+message: a self-identifying User-Agent is passed in, never written as a literal
+note: >-
+  The code that builds the client composes the identity (product token and contact) and passes it as `user_agent`.
+files:
+  - '*.py'
+utils:
+  token:
+    any:
+      - regex: '\(\+\s*(mailto:|https?://)'
+      - regex: ';\s*[A-Z][A-Za-z0-9_.\-]*/\d'
+      - kind: string_content
+        regex: '^[A-Z][A-Za-z0-9_.\-]*/\d'
+        not: {regex: '^(Mozilla|HTTP)/'}
+      - kind: format_specifier
+        regex: '^:?[A-Z][A-Za-z0-9_.\-]*/\d'
+        not: {regex: '^(Mozilla|HTTP)/'}
+  # A literal with no f/t prefix (a docstring candidate): one string, or a concatenation of them.
+  plain-literal:
+    any:
+      - {kind: string, has: {kind: string_start, not: {regex: '[fFtT]'}}}
+      - {kind: concatenated_string, not: {has: {kind: string, has: {kind: string_start, regex: '[fFtT]'}}}}
+  docstring:
+    kind: expression_statement
+    nthChild: {position: 1, ofRule: {not: {kind: comment}}}
+    inside:
+      any:
+        - {kind: module}
+        - {kind: block, inside: {any: [{kind: class_definition}, {kind: function_definition}]}}
+    has:
+      any:
+        - matches: plain-literal
+        - {kind: parenthesized_expression, has: {stopBy: {not: {kind: parenthesized_expression}}, matches: plain-literal}}
+    not: {has: {nthChild: 2}}
+rule:
+  not: {inside: {stopBy: end, matches: docstring}}
+  any:
+    - {kind: string_content, matches: token}
+    - {kind: format_specifier, matches: token}
+    - kind: concatenated_string
+      # a token inside an interpolation's CODE (`f"{Bot/2}"`) is not a literal
+      not:
+        any:
+          - {has: {stopBy: end, kind: interpolation, matches: token}}
+          - {regex: '^[a-zA-Z]{0,2}["\'']{1,3}M(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?o(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?z(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?i(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?l(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?l(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?a(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?/'}
+          - {regex: '^[a-zA-Z]{0,2}["\'']{1,3}H(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?T(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?T(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?P(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?/'}
+      any:
+        - regex: '\((?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?\+(?:\s|["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})*(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?(?:m(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?a(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?i(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?l(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?t(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?o(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?:|h(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?t(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?t(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?ps?(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?:(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?/(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?/)'
+        - regex: '^[a-zA-Z]{0,2}["\'']{1,3}[A-Z](?:[\w.\-]|["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})*(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?/(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?\d'
+        - regex: ';(?:\s|["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})*[A-Z](?:[\w.\-]|["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})*(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?/(?:["\'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["\'']{1,3})?\d'

@@ -1,0 +1,7 @@
+HttpOptions(headers=make(Authorization=token))
+HttpOptions(headers={_API_KEY_HEADER: key})
+HttpOptions(headers={k: v for k, v in [("X-Token", token)]})
+HttpOptions(headers={"X-" f"{token_name}": key})
+HttpOptions(headers={f"{token_header}": key})
+HttpOptions(headers={"Accept-" "Encoding": "gzip"})
+HttpOptions(headers=dict(accept=token))

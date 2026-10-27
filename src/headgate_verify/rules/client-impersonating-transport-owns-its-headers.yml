@@ -1,0 +1,39 @@
+# A TLS-impersonating transport owns the browser headers; `client-no-user-agent-beside-impersonation` is the rule's
+# other half.
+#
+# `headgate.curl.AsyncCurlTransport(impersonate="chrome")` presents a real browser's handshake, and `"chrome"` is a
+# ROLLING alias (curl_cffi re-points it at its newest fingerprint each release). With `default_headers` omitted curl
+# adds no browser headers of its own, so whatever the module sets by hand IS the browser identity, and it cannot track
+# the alias (a chrome150 handshake under a `Chrome/140` header, and no `Sec-Ch-Ua` hints).
+#
+# Reported: a call to `AsyncCurlTransport`, bare or as an attribute (`curl.AsyncCurlTransport(...)`), that does not
+# pass the keyword `default_headers=True`, the literal (parenthesised or not). `default_headers=False`, a name, or the
+# flag arriving through `**kwargs` is reported.
+id: client-impersonating-transport-owns-its-headers
+language: python
+severity: error
+message: an AsyncCurlTransport passes default_headers=True, so curl supplies headers that match its fingerprint
+note: >-
+  Pass default_headers=True and delete the hand-set browser headers: the handshake's browser version is whatever the
+  rolling impersonate alias resolves to today.
+files:
+  - '*.py'
+rule:
+  kind: call
+  has:
+    field: function
+    any:
+      - {kind: identifier, regex: '^AsyncCurlTransport$'}
+      - {kind: attribute, has: {field: attribute, regex: '^AsyncCurlTransport$'}}
+  not:
+    has:
+      field: arguments
+      has:
+        kind: keyword_argument
+        all:
+          - has: {field: name, regex: '^default_headers$'}
+          - has:
+              field: value
+              any:
+                - {kind: 'true'}
+                - {kind: parenthesized_expression, has: {stopBy: {not: {kind: parenthesized_expression}}, kind: 'true'}}

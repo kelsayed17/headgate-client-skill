@@ -1,0 +1,51 @@
+# No placeholder contact in a client package.
+#
+# Reported: an `example.com`, `example.org` or `example.net` (any case) in any string literal that is not a
+# docstring: a plain, raw, bytes, f- or t-string (each literal part of an f/t-string is read on its own), an f-string's
+# format spec, and an implicit concatenation read JOINED, so `"exam" "ple.com"` and `"ops@exam" f"ple.com{v}"` are
+# caught. The joined regex is the token with an optional BREAK between every two characters; BREAK is closing
+# quote(s), whitespace, `\` continuations or comments, an optional prefix and opening quote(s). A concatenation whose
+# interpolation CODE holds the token (`"a" f"{example.com}"`) is not read joined: that is an expression, not a
+# literal. A placeholder one indirection away (a settings fallback, a constant) is a literal too.
+#
+# Exempt: a docstring, which is the first statement of a module, class or function body when that statement is one
+# string or one concatenation of strings with no f/t prefix, parenthesised or not.
+#
+# DISCLOSED: an escape-encoded character (`example\x2ecom`) is read as written, not decoded.
+id: client-no-placeholder-contact
+language: python
+severity: error
+message: no placeholder contact (example.com/.org/.net) in the transport tree
+note: >-
+  The contact a User-Agent carries is deployment configuration passed to the client; no address, placeholder or real,
+  belongs in source.
+files:
+  - '*.py'
+utils:
+  token: {regex: '(?i)example\.(com|org|net)'}
+  # A literal with no f/t prefix (a docstring candidate): one string, or a concatenation of them.
+  plain-literal:
+    any:
+      - {kind: string, has: {kind: string_start, not: {regex: '[fFtT]'}}}
+      - {kind: concatenated_string, not: {has: {kind: string, has: {kind: string_start, regex: '[fFtT]'}}}}
+  docstring:
+    kind: expression_statement
+    nthChild: {position: 1, ofRule: {not: {kind: comment}}}
+    inside:
+      any:
+        - {kind: module}
+        - {kind: block, inside: {any: [{kind: class_definition}, {kind: function_definition}]}}
+    has:
+      any:
+        - matches: plain-literal
+        - {kind: parenthesized_expression, has: {stopBy: {not: {kind: parenthesized_expression}}, matches: plain-literal}}
+    not: {has: {nthChild: 2}}
+rule:
+  not: {inside: {stopBy: end, matches: docstring}}
+  any:
+    - {kind: string_content, matches: token}
+    - {kind: format_specifier, matches: token}
+    - kind: concatenated_string
+      # a token inside an interpolation's CODE (`f"{example.com}"`) is not a literal
+      not: {has: {stopBy: end, kind: interpolation, matches: token}}
+      regex: '(?i)e(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?x(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?a(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?m(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?p(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?l(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?e(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?\.(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?(?:c(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?o(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?m|o(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?r(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?g|n(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?e(?:["'']{1,3}(?:\s|\\|#.*)*[a-zA-Z]{0,2}["'']{1,3})?t)'

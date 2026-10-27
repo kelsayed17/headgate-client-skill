@@ -1,0 +1,22 @@
+# A client's `user_agent` parameter has no default.
+# The User-Agent a client declares is deployment configuration: the code that builds the client owns it and passes it
+# in. A default in the client would be a second source of that value. With no default, a construction that forgets
+# the argument is a TypeError, never a silently different identity on a host that polices fair access. `None` counts
+# as a default: it sends headgate's own User-Agent instead of the caller's.
+#
+# Reported: a parameter named exactly `user_agent` that has a default, in any def (sync or async, nested, a method,
+# decorated) or lambda, positional or keyword-only, annotated or not, whatever the default expression is.
+# DISCLOSED: a user agent read out of `**kwargs` with a fallback (`kwargs.get("user_agent", "x")`) is not a parameter
+# and is not read; neither is a parameter under another name that becomes the User-Agent header; a field named
+# `user_agent` on a settings class or struct is not a parameter.
+id: client-user-agent-has-no-default
+language: python
+severity: error
+message: a client's user_agent has no default; the code that builds the client passes it
+note: >-
+  The User-Agent is deployment configuration. Make the parameter required and pass it where the client is built.
+files:
+  - '*.py'
+rule:
+  any: [{kind: default_parameter}, {kind: typed_default_parameter}]
+  has: {field: name, regex: '^user_agent$'}
