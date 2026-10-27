@@ -129,3 +129,23 @@ def test_allow_on_the_enclosing_def_line(tmp_path: Path) -> None:
     assert apply_exemptions(raw, parse(pkg), frozenset({"filler-name"})) == []
     unknown = apply_exemptions(raw, parse(pkg), frozenset())
     assert [(finding.rule, finding.line) for finding in unknown] == [("bad-exemption", 8), ("filler-name", 9)]
+
+
+def test_missing_node_is_a_parse_error(tmp_path: Path) -> None:
+    """Code tree-sitter repairs with a MISSING node, but Python refuses, is a parse-error at Python's line."""
+    client = _write(tmp_path, "client.py", '"""Doc."""\n\n\ndef f(:\n    pass\n')
+    findings = verify([tmp_path])
+    assert [(finding.rule, finding.path, finding.line) for finding in findings] == [("parse-error", client, 4)]
+
+
+def test_module_finding_is_covered_from_the_leading_block(tmp_path: Path) -> None:
+    """A finding against the module is covered by an allow comment anywhere before the first statement."""
+    header = "# Copyright (c) 2026 Example Author\n# SPDX-License-Identifier: MIT\n"
+    allow = "# headgate-verify: allow client-module-has-a-client -- generated\n"
+    _write(tmp_path, "client.py", f'{header}\n{allow}"""Doc."""\n')
+    assert verify([tmp_path]) == []
+    _write(tmp_path, "client.py", f'{header}"""Doc."""\n{allow}')
+    assert [(finding.rule, finding.line) for finding in verify([tmp_path])] == [
+        ("client-module-has-a-client", 1),
+        ("bad-exemption", 4),
+    ]

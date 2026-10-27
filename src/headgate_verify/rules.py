@@ -14,6 +14,7 @@ an alternation of the field's values, each escaped, so ``'^({{config.filler_word
 an empty field writes an alternation that matches nothing.
 """
 
+import ast
 import functools
 import re
 from dataclasses import dataclass, field, fields
@@ -164,12 +165,22 @@ def _parsed(pkg: Package) -> _Parsed:
         except UnicodeDecodeError as error:
             errors.append(_parse_error(path, 1, f"not UTF-8: {error.reason}"))
             continue
+        # Python's own parser first: tree-sitter repairs some code Python refuses with a MISSING node, which
+        # ast-grep-py cannot see. ast.parse only builds a tree; it neither imports nor executes the module.
+        try:
+            ast.parse(text, filename=str(path))
+        except SyntaxError as error:
+            errors.append(_parse_error(path, error.lineno or 1, f"syntax error: {error.msg}"))
+            continue
+        except ValueError as error:
+            errors.append(_parse_error(path, 1, str(error)))
+            continue
         root = SgRoot(text, _LANGUAGE)
         broken = root.root().find(kind="ERROR")
         if broken is None:
             roots[path] = root
         else:
-            errors.append(_parse_error(path, broken.range().start.line + 1, "syntax error"))
+            errors.append(_parse_error(path, broken.range().start.line + 1, "tree-sitter syntax error"))
     return _Parsed(roots, tuple(errors))
 
 

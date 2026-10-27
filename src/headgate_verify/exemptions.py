@@ -4,7 +4,9 @@
 """Allow comments: ``# headgate-verify: allow <rule-id> -- <reason>``.
 
 A finding is dropped when its own line, or the ``def``/``class`` line of any function or class enclosing it, carries
-an allow comment naming its rule with a reason. Every ``# headgate-verify:`` comment that is malformed, gives no
+an allow comment naming its rule with a reason. A finding against the whole module (a match of the ``module`` node,
+reported at the module's first line) is also covered by an allow comment anywhere before the module's first statement,
+so it can sit below a license header. Every ``# headgate-verify:`` comment that is malformed, gives no
 reason, names an unknown rule, or drops no finding is itself an error, ``bad-exemption``.
 """
 
@@ -62,6 +64,15 @@ def _scope_lines(root: SgRoot) -> list[tuple[int, int]]:
     return [(node.range().start.line + 1, node.range().end.line + 1) for node in scopes]
 
 
+def _leading_lines(root: SgRoot) -> set[int]:
+    """Return the module's first line and every line before its first statement, 1-based."""
+    module = root.root()
+    first = module.range().start.line + 1
+    statements = [child for child in module.children() if child.is_named() and child.kind() != "comment"]
+    end = statements[0].range().start.line + 1 if statements else module.range().end.line + 2
+    return {first} | set(range(first, end))
+
+
 def apply_exemptions(
     findings: Iterable[Finding], modules: dict[Path, SgRoot], known_rules: frozenset[str]
 ) -> list[Finding]:
@@ -78,9 +89,13 @@ def apply_exemptions(
         allows, bad = _allows(path, root, known_rules)
         kept.extend(bad)
         scopes = _scope_lines(root)
+        module_line = root.root().range().start.line + 1
+        leading = _leading_lines(root)
         used: set[_Allow] = set()
         for finding in by_path.get(path, []):
             lines = {finding.line} | {start for start, end in scopes if start <= finding.line <= end}
+            if finding.line == module_line:
+                lines |= leading
             covering = [allow for allow in allows if allow.rule == finding.rule and allow.line in lines]
             if covering:
                 used.update(covering)
