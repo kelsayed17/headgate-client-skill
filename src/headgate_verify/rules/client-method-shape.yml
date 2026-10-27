@@ -42,9 +42,11 @@
 # (`Model(...)`, `httpx2.Timeout(...)`) anywhere in a keyword value other than `body=`. Its keywords are only the ones
 # headgate 0.7.0's verbs take (`RequestOptions` plus the verb's own): `params`, `body`, `json`, `data`, `content`,
 # `files`, `headers`, `idempotency_key`, `expect`, `retry`, `timeout`, `deadline`, `follow_redirects` and
-# `cache_ttl` (not `auth=`, `cookies=`, `extensions=`, a typo, or paginate's `pages=`/`limit=`). The knobs `retry`,
+# `cache_ttl` (not `auth=`, `cookies=`, `extensions=`, a typo, or paginate's `pages=`/`limit=`). The knobs
 # `follow_redirects` and `cache_ttl` are a literal or a parameter (so a per-call cache lifetime a method COMPUTES,
-# `cache_ttl=_year_ttl(year)`, is reported). `deadline` may also be a bare UPPER_CASE name, public or `_`-prefixed:
+# `cache_ttl=_year_ttl(year)`, is reported). `retry` is a literal, a parameter, or (R10) a bare UPPER_CASE name the
+# module binds at module level, as `expect=` is: a `RetryPolicy` an executing write names is declared once
+# (`ORDER_RETRY = RetryPolicy(attempts=1)`), never built at the call. `deadline` may also be a bare UPPER_CASE name, public or `_`-prefixed:
 # a module constant, fixed at import. `timeout` is a parameter or such a name only: headgate takes a `Timeouts`, never
 # a number, and a `Timeouts(...)` built at the call is a value computed per call, so it is a module constant.
 #
@@ -53,7 +55,8 @@
 # `as_bytes`. Readers are module-level values built at import, so a bad declaration fails at import, not on the
 # first call: `decoder(Foo)`, `Expect(...)`, `Expect(FOO).on(...)` or any other call there is reported, as is a
 # lowercase or dotted name, or an UPPER_CASE name the module does not bind (a parameter, a local). `head()` may omit
-# `expect=` (headgate reads `nothing` then).
+# `expect=` (headgate reads `nothing` then). This rule does not check that the name IS a reader: client-method-returns
+# is what catches a non-reader UPPER_CASE name (such as `BASE_URL`) passed as `expect=`.
 #
 # Each REQUEST keyword is FORWARDED, where "a request parameter" means a parameter NAME of the method (not a type in
 # its annotation, not a default value) whose default, if it has one, is None, so neither a module global nor a
@@ -120,6 +123,8 @@
 #   * a writer may be public (`body=NEW_ORDER(order)`, as headgate's examples and the spec write it), not only
 #     `_`-prefixed, and `body=` is exempt from the constructor clause, which a public writer's name would trip;
 #   * the collector must be typed `Unpack[<X>Params]`, and a public method may not take `params` as a plain argument;
+#   * `retry=` may be a module-level UPPER_CASE name (R10; the source allowed only a literal or a parameter), so the
+#     policy client-order-writes-name-retry asks an executing write to name can be a declared `RetryPolicy`;
 #   * the class clause names headgate 0.7.0's request methods instead of an in-tree base's old names (`_send`,
 #     `_fetch`, `_status_error`, `_client_error` mean nothing to headgate, so defining one is a private helper).
 #
@@ -232,12 +237,15 @@ utils:
           any:
             - {kind: dotted_name, follows: {stopBy: end, regex: '^import$'}, has: {kind: identifier, pattern: $READER}}
             - {kind: aliased_import, has: {field: alias, pattern: $READER}}
+  # A bare UPPER_CASE name the module binds at module level (capture and use in one rule, for use under `not:`).
+  module-name:
+    all:
+      - {kind: identifier, regex: '^_?[A-Z][A-Z0-9_]*$', pattern: $READER}
+      - inside: {kind: module, stopBy: end, has: {matches: module-binding}}
   ok-reader:
     any:
       - {kind: identifier, regex: '^(nothing|as_bytes)$'}
-      - all:
-          - {kind: identifier, regex: '^_?[A-Z][A-Z0-9_]*$', pattern: $READER}
-          - inside: {kind: module, stopBy: end, has: {matches: module-binding}}
+      - matches: module-name
   bad-expect:
     kind: keyword_argument
     has: {field: name, regex: '^expect$'}
@@ -309,7 +317,9 @@ utils:
         - has: {matches: built-keyword}
         - has: {matches: bad-expect}
         # The transport knobs are a literal or a parameter.
-        - has: {kind: keyword_argument, all: [{has: {field: name, regex: '^(retry|follow_redirects|cache_ttl)$'}}, {not: {has: {field: value, any: [{kind: integer}, {kind: float}, {kind: 'true'}, {kind: 'false'}, {kind: 'none'}, {matches: param-ident}]}}}]}
+        - has: {kind: keyword_argument, all: [{has: {field: name, regex: '^(follow_redirects|cache_ttl)$'}}, {not: {has: {field: value, any: [{kind: integer}, {kind: float}, {kind: 'true'}, {kind: 'false'}, {kind: 'none'}, {matches: param-ident}]}}}]}
+        # retry= may also name a module-level policy (R10), as an executing write is asked to.
+        - has: {kind: keyword_argument, all: [{has: {field: name, regex: '^retry$'}}, {not: {has: {field: value, any: [{kind: integer}, {kind: float}, {kind: 'true'}, {kind: 'false'}, {kind: 'none'}, {matches: param-ident}, {matches: module-name}]}}}]}
         # deadline= may also be a bare UPPER_CASE name, a module constant fixed at import.
         - has: {kind: keyword_argument, all: [{has: {field: name, regex: '^deadline$'}}, {not: {has: {field: value, any: [{kind: integer}, {kind: float}, {kind: 'true'}, {kind: 'false'}, {kind: 'none'}, {matches: param-ident}, {kind: identifier, regex: '^_?[A-Z][A-Z0-9_]*$'}]}}}]}
         # timeout= is a headgate `Timeouts`, never a number or None: a parameter or a bare UPPER_CASE name.
