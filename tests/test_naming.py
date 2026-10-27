@@ -419,3 +419,41 @@ def test_name_from_the_documented_path(tmp_path: Path) -> None:
     wrong = _client(tmp_path, _get("get_analyst_insights", '"v1/analyst-insights"'))
     (problem,) = check_names(wrong, snapshot)
     assert "should be named get_benzinga_analyst_insights" in problem
+
+
+# R26: the project's [tool.headgate-verify] lists, read from the pyproject nearest the package
+
+
+def _pyproject(tmp_path: Path, table: str) -> None:
+    (tmp_path / "pyproject.toml").write_text(f"[tool.headgate-verify]\n{table}\n", encoding="utf-8")
+
+
+def test_project_filler_words_change_a_derived_name(tmp_path: Path) -> None:
+    """R26: ``filler-words`` in the package's pyproject drops a word; an explicit ``filler`` still wins."""
+    _pyproject(tmp_path, 'filler-words = ["finance"]')
+    client = _client(tmp_path, _get("get_quote_summary", 't"v10/finance/quoteSummary/{symbol}"'))
+    snapshot = _snapshot(tmp_path, [("GET", "/v10/finance/quoteSummary/{symbol}")])
+
+    assert check_names(client, snapshot) == []
+    (problem,) = check_names(client, snapshot, filler=DEFAULT_FILLER)
+    assert "should be named get_finance_quote_summary" in problem
+
+
+def test_project_post_reads_make_a_post_a_read(tmp_path: Path) -> None:
+    """R26: ``post-reads`` in the package's pyproject makes a POST a read; an explicit ``post_reads`` still wins."""
+    _pyproject(tmp_path, 'post-reads = ["get_search"]')
+    body = '    async def get_search(self, b: B) -> O:\n        return await self.post("v1/search", body=b, expect=X)\n'
+    client = _client(tmp_path, body)
+    snapshot = _snapshot(tmp_path, [("POST", "/v1/search")])
+
+    assert check_names(client, snapshot) == []
+    (problem,) = check_names(client, snapshot, post_reads=())
+    assert "exempt_writes" in problem
+
+
+def test_no_project_lists_keep_the_defaults(tmp_path: Path) -> None:
+    """R26: with no pyproject table, ``finance`` is not filler and a POST is not a read."""
+    _pyproject(tmp_path, "")
+    client = _client(tmp_path, _get("get_quote_summary", 't"v10/finance/quoteSummary/{symbol}"'))
+    (problem,) = check_names(client, _snapshot(tmp_path, [("GET", "/v10/finance/quoteSummary/{symbol}")]))
+    assert "should be named get_finance_quote_summary" in problem

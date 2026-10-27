@@ -37,7 +37,7 @@ from typing import TYPE_CHECKING
 
 from ast_grep_py import SgRoot
 
-from headgate_verify.config import Config
+from headgate_verify.config import Config, load_config
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
@@ -528,7 +528,7 @@ def check_names(  # noqa: PLR0913 -- the documented signature: two files and fou
     *,
     overrides: Mapping[str, str] = {},
     exempt_writes: Collection[str] = (),
-    post_reads: Collection[str] = (),
+    post_reads: Collection[str] | None = None,
     filler: frozenset[str] | None = None,
 ) -> list[str]:
     """Return one sentence per naming problem of ``client_module`` against the ``snapshot`` file; ``[]`` is clean.
@@ -542,9 +542,16 @@ def check_names(  # noqa: PLR0913 -- the documented signature: two files and fou
     snapshot does not list, or lists more than once (both skipped when ``source`` is null); two read paths that still
     derive one name; a stale override key; a non-GET method in neither ``exempt_writes`` nor ``post_reads``; a name in
     ``exempt_writes`` or ``post_reads`` that is no method. Raise ``SnapshotError`` when the snapshot breaks its schema.
+
+    ``filler`` and ``post_reads`` left out (None) are read from ``[tool.headgate-verify]`` in the ``pyproject.toml``
+    nearest ``client_module`` (``filler-words``, ``post-reads``), or are the verifier's defaults when it has no such
+    table (ruling R26); a value passed in wins. Raise ``ConfigError`` when that table is malformed.
     """
     docs = load_snapshot(snapshot)
-    filler = DEFAULT_FILLER if filler is None else filler
+    if filler is None or post_reads is None:
+        project = load_config(client_module)
+        filler = project.filler_words if filler is None else filler
+        post_reads = project.post_reads if post_reads is None else post_reads
     requests = _requests(client_module)
     methods = {name: request.endpoint for name, request in requests.items() if request.endpoint is not None}
     unreadable = {

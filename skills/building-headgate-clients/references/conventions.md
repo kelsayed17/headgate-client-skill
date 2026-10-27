@@ -34,7 +34,8 @@ Each rule names the verifier rule that checks it, where one does; [verifier.md](
   ```
 
 - Project lists the verifier reads go in `[tool.headgate-verify]` (see [verifier.md](verifier.md#configuration)), and
-  `headgate-verify` reads it from the working directory: run it from the project root.
+  `headgate-verify` reads it from the `pyproject.toml` nearest the working directory, so run it from the project
+  root; the naming test's `check_names` reads `filler-words` and `post-reads` from the one nearest the package.
 
 ## The package
 
@@ -103,10 +104,11 @@ NEW_ORDER = encoder(NewOrderBody)  # a writer
 ORDER_RETRY = RetryPolicy(attempts=1)  # a non-idempotent write's retry policy
 ```
 
-Pagers and page budgets live in `pagination.py` (below). In a method, `expect=`, `retry=`, `pages=`, `limit=`,
-`deadline=` and `timeout=` are bare UPPER_CASE names the module binds; a call there (`expect=decoder(Filing)`,
-`expect=Expect(...)`) is reported by `client-method-shape`. headgate's own `nothing` and `as_bytes` may be passed by
-name. Path constants are module-level too, never class attributes (`client-path-constants-at-module-level`); a name
+Pagers and page budgets live in `pagination.py` (below). In a method, `expect=`, `pages=` and `limit=` are bare
+UPPER_CASE names the module binds; a call there (`expect=decoder(Filing)`, `expect=Expect(...)`) is reported by
+`client-method-shape`. headgate's own `nothing` and `as_bytes` may be passed to `expect=` by name. `retry=` and
+`deadline=` take such a name, a literal or a parameter of the method; `timeout=` takes such a name or a parameter
+(headgate takes a `Timeouts`, so one built at the call is a module constant instead). Path constants are module-level too, never class attributes (`client-path-constants-at-module-level`); a name
 ending `_URL` holds an absolute URL, a relative one ends `_PATH` (`client-url-suffix-means-absolute`).
 
 ## Endpoint methods
@@ -126,7 +128,9 @@ ending `_URL` holds an absolute URL, a relative one ends `_PATH` (`client-url-su
       return await self.get("v1/forecast", params=params, expect=FORECAST)
   ```
 
-  A write that returns nothing may be `await self.delete(...)` alone. A write's body goes through a module-level
+  A write that returns nothing is annotated `-> None` and passes headgate's `nothing` reader:
+  `await self.delete(t"v2/orders/{order_id}", expect=nothing)` (every verb but `head()` needs `expect=`, and
+  `client-method-returns` asks a `-> None` method for `expect=nothing`). A write's body goes through a module-level
   writer: `return await self.post("v2/orders", body=NEW_ORDER(order), expect=ORDER, retry=ORDER_RETRY)`.
 - **Path parameters are positional arguments** interpolated into a t-string. Query parameters arrive as
   `**params: Unpack[<Endpoint>Params]` and are forwarded as `params=params`; never a `params` mapping argument.

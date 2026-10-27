@@ -16,8 +16,11 @@ A read (a `GET`, or a method listed in `post_reads`) is named `get_` plus the li
    word: `CNMSshvol`), and lower-case the words.
 3. Join them with `_` after `get_`.
 4. **On a collision only**, an item endpoint (its list's path plus one trailing `{param}`) whose name equals its
-   list's takes its last word singular, by dropping a trailing `s`: `/v1/clients/` is `get_clients` and
-   `/v1/clients/{id}/` is `get_client`. No collision, no singularising.
+   list's takes its last word singular, by dropping a trailing `s`: `GET /v1/clients/` is `get_clients` and
+   `GET /v1/clients/{id}/` is `get_client`. The list endpoint must itself be a **read** (a documented `GET`, or a
+   `post_reads` method's path): no collision, no singularising. So beside `POST /v2/orders` (a write, which keeps its
+   verb name `create_order`), `GET /v2/orders/{id}` derives `get_orders`, and naming it `get_order` takes an
+   override: `"GET /v2/orders/{id}": "get_order",  # one order; the list path is only the create endpoint`.
 
 The default filler words are `api`, `global`, `locale`, `market`, `markets` and `us`. Examples, from the worked
 examples' snapshots:
@@ -79,13 +82,15 @@ returns one sentence per problem, so a failing assertion says what to fix. With 
 |---|---|
 | `overrides` | the override table below |
 | `exempt_writes` | write methods the naming rule skips |
-| `post_reads` | methods that read by `POST`, named like reads |
-| `filler` | the filler words; the defaults above when omitted |
+| `post_reads` | methods that read by `POST`, named like reads; the project's `post-reads` when omitted |
+| `filler` | the filler words; the project's `filler-words` when omitted, else the defaults above |
 
-The verifier's `[tool.headgate-verify]` table also accepts `filler-words` and `post-reads`, but no verifier rule
-reads them and `check_names` does not load them by itself. To keep one list, pass them in:
-`filler=load_config(PACKAGE).filler_words` (`from headgate_verify.config import load_config`; it reads the
-`pyproject.toml` nearest the path you give it).
+When `filler` or `post_reads` is not passed, `check_names` reads it from `[tool.headgate-verify]`
+(`filler-words`, `post-reads`) in the `pyproject.toml` nearest the package's `client.py`, falling back to the
+defaults when there is no such table; an argument passed in wins. That is the package's pyproject, while the
+`headgate-verify` command reads the one nearest its working directory ([verifier.md](verifier.md#configuration)), so
+in a project whose packages sit under the root's `pyproject.toml` both read the same table. No verifier rule reads
+these two keys: the naming test is their reader.
 
 ## Overrides
 

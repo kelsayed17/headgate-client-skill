@@ -26,9 +26,12 @@ checked, except directories named `tests` or `.venv` or starting with `.`. Each 
 
 ## Configuration
 
-The verifier reads `[tool.headgate-verify]` from the `pyproject.toml` nearest the **current working directory** (at
-or above it), not the one nearest the checked package, so run it from the project root. Every key is a list of
-strings; an unknown key, or a value that is not a list of strings, is exit `2`.
+Two readers take `[tool.headgate-verify]` from two places. The `headgate-verify` command reads the `pyproject.toml`
+nearest the **current working directory** (at or above it), not the one nearest the checked package, so run it from
+the project root. The naming test's `check_names` reads the `pyproject.toml` nearest the **package's `client.py`**,
+for `filler-words` and `post-reads`, unless the test passes `filler=` or `post_reads=` itself (see
+[naming.md](naming.md)). Every key is a list of strings; an unknown key, or a value that is not a list of strings, is
+exit `2` for the command and a `ConfigError` for `check_names`.
 
 ```toml
 [tool.headgate-verify]
@@ -39,8 +42,8 @@ write-name-fragments = ["order", "orders", "transfer", "withdraw", "payment"]
 | Key | Default | Read by |
 |---|---|---|
 | `browser-user-agent-packages` | `[]` | `client-browser-user-agent-only-where-allowed` |
-| `filler-words` | `["api", "global", "locale", "market", "markets", "us"]` | no rule; pass it to `check_names` yourself |
-| `post-reads` | `[]` | no rule; pass it to `check_names` yourself |
+| `filler-words` | `["api", "global", "locale", "market", "markets", "us"]` | `check_names`, in the naming test |
+| `post-reads` | `[]` | `check_names`, in the naming test |
 | `write-name-fragments` | `["order", "orders", "payment", "transfer", "withdraw"]` | `client-order-writes-name-retry` |
 
 `one-flavour` reads a different file: the `pyproject.toml` nearest the checked **package**, for the headgate extra

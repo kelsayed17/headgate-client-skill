@@ -1,6 +1,6 @@
 ---
 name: building-headgate-clients
-description: Use when building, extending or reviewing an HTTP API client on headgate (the async Python HTTP client library) - a new provider's client package, a new endpoint on one, its wire models, pagination or tests - or when headgate-verify reports a finding. Covers saving the API's docs, one method per documented endpoint named after its path, module-level readers, recorded-fixture tests, and the verifier gate.
+description: Use when building, extending or reviewing an HTTP API client on headgate (the async Python HTTP client library) - a new provider's client package, a new endpoint, wire models, pagination or tests for one - or when headgate-verify reports a finding, a test_method_names.py or check_names fails, or a docs_paths.json snapshot needs writing.
 ---
 
 # Building headgate clients
@@ -38,7 +38,7 @@ Do the steps in order. Each produces something the next one needs.
 3. **Write the models, then the module-level values, then the methods.** Models first (`models.py`: wire shapes with
    the API's field names, and a `<Endpoint>Params` `TypedDict` per endpoint's query). Then, at module level of
    `client.py`: the base URL (a host with no path), the pace, every reader (`decoder(...)`, `Expect(...).on(...)`),
-   any writer, retry policy, pager and page budget. Then the class, whose methods are each one statement forwarding
+   any writer and retry policy; pagers and page budgets go in `pagination.py`. Then the class, whose methods are each one statement forwarding
    to a headgate verb or `paginate`. Write the module docstring as you measure: dates, statuses, error bodies, limits,
    terms, and what you did not measure. The full rules are in [references/conventions.md](references/conventions.md),
    and the method names in [references/naming.md](references/naming.md).
@@ -59,8 +59,8 @@ Do the steps in order. Each produces something the next one needs.
    does not fail the run, but a person has to judge it: fix the code, or keep it with an allow comment whose reason
    says why it is right (`# headgate-verify: allow <rule-id> -- <reason>`). Say how each was resolved when you report.
 
-**Done** means `headgate-verify` prints nothing (or only warnings each carrying an allow comment with a reason) and
-exits `0`, and pytest passes, the naming test included. Not before: a client the verifier passes can still be
+**Done** means `headgate-verify` prints nothing (every warning was fixed or carries an allow comment with a reason)
+and exits `0`, and pytest passes, the naming test included. Not before: a client the verifier passes can still be
 misnamed, and only the naming test catches that.
 
 ## Never

@@ -29,6 +29,9 @@ if TYPE_CHECKING:
 OUTPUT = Path(__file__).parent.parent / "skills" / "building-headgate-clients" / "references" / "verifier.md"
 _PLACEHOLDER = re.compile(r"\{\{config\.(\w+)\}\}")
 _SPACE = re.compile(r"\s+")
+_NAMING_FIELDS = frozenset({"filler_words", "post_reads"})
+"""The ``Config`` fields ``check_names`` defaults from the package's pyproject (ruling R26); no YAML rule reads them."""
+_NAMING_READER = "`check_names`, in the naming test"
 
 
 @dataclass(frozen=True)
@@ -85,7 +88,7 @@ def _config_rows() -> list[str]:
     lines = []
     for field in fields(Config):
         default = ", ".join(f'"{value}"' for value in sorted(getattr(Config(), field.name)))
-        used = ", ".join(readers.get(field.name, [])) or "no rule; pass it to `check_names` yourself"
+        used = ", ".join([*readers.get(field.name, []), *([_NAMING_READER] if field.name in _NAMING_FIELDS else [])])
         lines.append(f"| `{_key(field.name)}` | `[{default}]` | {used} |")
     return lines
 
@@ -119,9 +122,12 @@ checked, except directories named `tests` or `.venv` or starting with `.`. Each 
 
 ## Configuration
 
-The verifier reads `[tool.headgate-verify]` from the `pyproject.toml` nearest the **current working directory** (at
-or above it), not the one nearest the checked package, so run it from the project root. Every key is a list of
-strings; an unknown key, or a value that is not a list of strings, is exit `2`.
+Two readers take `[tool.headgate-verify]` from two places. The `headgate-verify` command reads the `pyproject.toml`
+nearest the **current working directory** (at or above it), not the one nearest the checked package, so run it from
+the project root. The naming test's `check_names` reads the `pyproject.toml` nearest the **package's `client.py`**,
+for `filler-words` and `post-reads`, unless the test passes `filler=` or `post_reads=` itself (see
+[naming.md](naming.md)). Every key is a list of strings; an unknown key, or a value that is not a list of strings, is
+exit `2` for the command and a `ConfigError` for `check_names`.
 
 ```toml
 [tool.headgate-verify]
