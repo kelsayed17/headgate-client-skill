@@ -7,6 +7,10 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Repository setup to match headgate's: a security policy, contributing guide and code of conduct; bug and feature
+  issue forms and a pull-request template; weekly grouped Dependabot updates for uv and GitHub Actions; CI runs the
+  tests with branch coverage (failing below the measured floor) and again at the lowest declared dependencies.
+
 - `headgate-verify`, a static checker for API clients written on headgate 0.7.0 or later: 32 ast-grep rules, six
   Python checks over a whole package (one class per host, no provider prefix on models, the package layout, one model
   flavour with its headgate extra, and two review warnings), each finding carrying how to fix it, allow comments with

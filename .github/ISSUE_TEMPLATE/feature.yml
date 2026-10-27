@@ -1,0 +1,22 @@
+name: Feature request
+description: A convention the skill should teach or the checker should enforce.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: The mistake an agent or author makes today when building a client, and why it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: A client that should fail, and one that should pass
+      description: A fail case and a pass case are what a new rule is built from.
+      render: python
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: headgate documentation, API docs or other projects that show the convention.

@@ -1,5 +1,11 @@
 # headgate-client-skill
 
+[![CI](https://github.com/kelsayed17/headgate-client-skill/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kelsayed17/headgate-client-skill/actions/workflows/ci.yml)
+[![Python 3.14+](https://img.shields.io/badge/python-3.14%2B-blue)](pyproject.toml)
+[![headgate 0.7+](https://img.shields.io/badge/headgate-0.7%2B-blue)](https://github.com/kelsayed17/headgate)
+[![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-orange)](.claude-plugin/plugin.json)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-green)](LICENSE)
+
 A Claude Code skill, and the checker that goes with it, for building HTTP API clients on
 [headgate](https://github.com/kelsayed17/headgate) the same way every time.
 
@@ -11,7 +17,7 @@ offline through its real headgate stack, and does not call the client done until
   references (the conventions, the docs snapshot, method naming, testing, the rule list).
 - **The checker**: `headgate-verify`, a Python package and command built on
   [ast-grep-py](https://ast-grep.github.io/). It reads a client package's source, never imports it and never touches
-  the network, and reports each broken convention as `file:line rule-id message`.
+  the network, and reports each broken convention as `file:line severity rule-id message`, with how to fix it on the next line.
 - **Two worked examples** that pass it: [`examples/msgspec/lda/`](examples/msgspec/lda/) (msgspec, one host, paged
   reads) and [`examples/pydantic/open_meteo/`](examples/pydantic/open_meteo/) (pydantic, two hosts sharing one rate
   budget).
