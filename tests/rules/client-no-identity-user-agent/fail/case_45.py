@@ -1,1 +1,1 @@
-UA = f"{now:shop-sync/1}"
+USER_AGENT = f"{now:shop-sync/1}"
