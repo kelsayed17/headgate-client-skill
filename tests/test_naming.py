@@ -329,3 +329,93 @@ def test_ambiguous_match_reported(tmp_path: Path) -> None:
     snapshot = _snapshot(tmp_path, [("GET", "/v1/quotes"), ("GET", "/v2/quotes")])
     problems = check_names(client, snapshot)
     assert any("more than one" in p and "/v1/quotes" in p and "/v2/quotes" in p for p in problems), problems
+
+
+# Fix round 1: unreadable paths, R17 path overrides, R18 names from the documented path
+
+
+def test_unreadable_path_reported_with_a_source(tmp_path: Path) -> None:
+    """A method whose path cannot be read is named, and the missing-method line counts it."""
+    body = "    async def get_quotes(self, t: str) -> X:\n        return await self.get(self._url(t), expect=X)\n"
+    problems = check_names(_client(tmp_path, body), _snapshot(tmp_path, [("GET", "/v3/quotes/{t}")]))
+    assert problems == [
+        (
+            "get_quotes calls self.get with a path that is not a string, t-string or module-level constant (or a "
+            "one-level delegate to one); spell the path as one of those so its name can be checked"
+        ),
+        "the documented read GET /v3/quotes/{t} has no method (1 method has an unreadable path)",
+    ]
+
+
+def test_unreadable_path_reported_with_a_null_source(tmp_path: Path) -> None:
+    """With ``source: null`` an f-string path is reported, so a misnamed read cannot pass silently."""
+    body = '    async def quotez(self, t: str) -> X:\n        return await self.get(f"v3/quotes/{t}", expect=X)\n'
+    snapshot = _snapshot(tmp_path, [], source=None, reason="no reference")
+    (problem,) = check_names(_client(tmp_path, body), snapshot)
+    assert problem.startswith("quotez calls self.get with a path that is not a string")
+
+
+def test_unreadable_path_through_a_delegate_reported(tmp_path: Path) -> None:
+    """A one-level delegate whose leg's path cannot be read is reported, naming the leg's call."""
+    body = (
+        "    async def get_d(self, url: str) -> D:\n        return await self._d(url)\n\n"
+        "    async def _d(self, url: str) -> D:\n        return await self.get(url.strip(), expect=X)\n"
+    )
+    snapshot = _snapshot(tmp_path, [], source=None, reason="no reference")
+    (problem,) = check_names(_client(tmp_path, body), snapshot)
+    assert problem.startswith("get_d calls self.get (through self._d) with a path that is not")
+
+
+def test_helper_call_is_not_an_unreadable_endpoint(tmp_path: Path) -> None:
+    """A public method calling a sibling that makes no request is no endpoint at all."""
+    body = "    def label(self) -> str:\n        return self._label()\n\n"
+    body += "    def _label(self) -> str:\n        return 'x'\n"
+    snapshot = _snapshot(tmp_path, [], source=None, reason="no reference")
+    assert check_names(_client(tmp_path, body), snapshot) == []
+
+
+@pytest.mark.parametrize(
+    ("list_path", "item_path", "list_name", "item_name"),
+    [
+        ("v1/data", "v1/data/{i}", "get_data", "get_datum"),
+        ("v2/stocks/bars", "v2/stocks/{s}/bars", "get_stocks_bars", "get_stock_bars"),
+    ],
+)
+def test_collision_reported_and_resolved_by_a_path_override(
+    tmp_path: Path, list_path: str, item_path: str, list_name: str, item_name: str
+) -> None:
+    """R17: two read paths deriving one name are reported, and a ``"VERB path"`` override resolves them."""
+    key = f"GET {item_path}"
+    body = _get(list_name, f't"{list_path}"') + _get(item_name, f't"{item_path}"')
+    snapshot = _snapshot(tmp_path, [("GET", f"/{list_path}"), ("GET", f"/{item_path}")])
+    problems = check_names(_client(tmp_path, body), snapshot)
+    collision = f'{list_path} and {item_path} both name {list_name}; add an override keyed "{key}"'
+    assert collision in problems, problems
+    assert all("override keyed" not in p or key in p for p in problems), problems
+    assert check_names(_client(tmp_path, body), snapshot, overrides={key: item_name}) == []
+
+
+def test_path_override_wins_over_a_name_override(tmp_path: Path) -> None:
+    """R17: a ``"VERB path"`` key wins over a name key for its endpoint; the path is normalised per R16."""
+    body = _get("get_last", 't"v3/quotes/{ticker}"')
+    snapshot = _snapshot(tmp_path, [("GET", "/v3/quotes/{ticker}")])
+    overrides = {"get_quotes": "get_other", "get /v3/quotes/{t}/": "get_last"}
+    assert check_names(_client(tmp_path, body), snapshot, overrides=overrides) == []
+
+
+def test_stale_path_override_reported(tmp_path: Path) -> None:
+    """R17: a ``"VERB path"`` key matching no endpoint is stale."""
+    client = _client(tmp_path, _get("get_quotes", '"v3/quotes"'))
+    (problem,) = check_names(client, _snapshot(tmp_path, [("GET", "/v3/quotes")]), overrides={"GET v3/trades": "x"})
+    assert "'GET v3/trades'" in problem
+    assert "stale" in problem
+
+
+def test_name_from_the_documented_path(tmp_path: Path) -> None:
+    """R18: a method matching one documented endpoint is named from the documented path."""
+    client = _client(tmp_path, _get("get_benzinga_analyst_insights", '"v1/analyst-insights"'))
+    snapshot = _snapshot(tmp_path, [("GET", "/benzinga/v1/analyst-insights")])
+    assert check_names(client, snapshot) == []
+    wrong = _client(tmp_path, _get("get_analyst_insights", '"v1/analyst-insights"'))
+    (problem,) = check_names(wrong, snapshot)
+    assert "should be named get_benzinga_analyst_insights" in problem
