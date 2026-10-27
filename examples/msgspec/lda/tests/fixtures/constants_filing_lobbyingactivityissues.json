@@ -1,0 +1,18 @@
+[
+  {
+    "value": "ACC",
+    "name": "Accounting"
+  },
+  {
+    "value": "ADV",
+    "name": "Advertising"
+  },
+  {
+    "value": "AER",
+    "name": "Aerospace"
+  },
+  {
+    "value": "AGR",
+    "name": "Agriculture"
+  }
+]

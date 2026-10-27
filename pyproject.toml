@@ -18,6 +18,7 @@ headgate-verify = "headgate_verify.cli:main"
 
 [dependency-groups]
 dev = [
+    "anyio>=4.15",
     "pytest>=9.1",
     "syrupy>=6.1.1",
     "ruff",
@@ -27,7 +28,8 @@ dev = [
 
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib --strict-markers"
-testpaths = ["tests"]
+testpaths = ["tests", "examples"]
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 120
@@ -40,6 +42,11 @@ ignore = ["COM812", "D203", "D213"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]
+"examples/**/tests/**" = ["S101"]
+
+[tool.ruff.lint.flake8-type-checking]
+# msgspec and pydantic read a model's annotations at run time: its field types are not type-checking-only imports.
+runtime-evaluated-base-classes = ["msgspec.Struct", "pydantic.BaseModel"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "pep257"

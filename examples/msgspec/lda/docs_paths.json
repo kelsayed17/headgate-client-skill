@@ -1,0 +1,79 @@
+{
+  "source": "https://lda.gov/api/openapi/v1/",
+  "retrieved": "2026-10-27",
+  "reason": null,
+  "endpoints": [
+    {
+      "verb": "GET",
+      "path": "/api/v1/clients/"
+    },
+    {
+      "verb": "GET",
+      "path": "/api/v1/clients/{id}/"
+    },
+    {
+      "verb": "GET",
+      "path": "/api/v1/constants/contribution/itemtypes/"
+    },
+    {
+      "verb": "GET",
+      "path": "/api/v1/constants/filing/filingtypes/"
+    },
+    {
+      "verb": "GET",
+      "path": "/api/v1/constants/filing/governmententities/"
+    },
+    {
+      "verb": "GET",
+      "path": "/api/v1/constants/filing/lobbyingactivityissues/"
+    },
+    {
+      "verb": "GET",
+      "path": "/api/v1/constants/general/countries/"
+    },
+    {
+      "verb": "GET",
+      "path": "/api/v1/constants/general/states/"
+    },
+    {
+      "verb": "GET",
+      "path": "/api/v1/constants/lobbyist/prefixes/"
+    },
+    {
+      "verb": "GET",
+      "path": "/api/v1/constants/lobbyist/suffixes/"
+    },
+    {
+      "verb": "GET",
+      "path": "/api/v1/contributions/"
+    },
+    {
+      "verb": "GET",
+      "path": "/api/v1/contributions/{filing_uuid}/"
+    },
+    {
+      "verb": "GET",
+      "path": "/api/v1/filings/"
+    },
+    {
+      "verb": "GET",
+      "path": "/api/v1/filings/{filing_uuid}/"
+    },
+    {
+      "verb": "GET",
+      "path": "/api/v1/lobbyists/"
+    },
+    {
+      "verb": "GET",
+      "path": "/api/v1/lobbyists/{id}/"
+    },
+    {
+      "verb": "GET",
+      "path": "/api/v1/registrants/"
+    },
+    {
+      "verb": "GET",
+      "path": "/api/v1/registrants/{id}/"
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "count": 336,
+  "next": "https://lda.gov/api/v1/registrants/?page=2&page_size=2&registrant_name=strategies&state=DC",
+  "previous": null,
+  "results": [
+    {
+      "address_1": "1300 CONNECTICUT AVE NW, #650",
+      "address_2": null,
+      "address_3": null,
+      "address_4": null,
+      "city": "WASHINGTON",
+      "contact_name": "REDACTED",
+      "contact_telephone": "REDACTED",
+      "country": "US",
+      "country_display": "United States of America",
+      "description": null,
+      "dt_updated": "2022-01-13T14:46:31.806487-05:00",
+      "house_registrant_id": 32906,
+      "id": 3550,
+      "name": "AMERICAN STRATEGIES",
+      "ppb_country": "US",
+      "ppb_country_display": "United States of America",
+      "state": "DC",
+      "state_display": "District of Columbia",
+      "url": "https://lda.gov/api/v1/registrants/3550/",
+      "zip": "20036"
+    },
+    {
+      "address_1": "1156 15 Street, NW",
+      "address_2": "Suite 500",
+      "address_3": null,
+      "address_4": null,
+      "city": "Washington",
+      "contact_name": "REDACTED",
+      "contact_telephone": "REDACTED",
+      "country": "US",
+      "country_display": "United States of America",
+      "description": "strategic communications and public affairs",
+      "dt_updated": "2026-09-09T14:52:27.688239-04:00",
+      "house_registrant_id": 31666,
+      "id": 9090,
+      "name": "CLS STRATEGIES (FORMERLY CHLOPAK, LEONARD, SCHECHTER AND ASSOCIATES, INC.)",
+      "ppb_country": "US",
+      "ppb_country_display": "United States of America",
+      "state": "DC",
+      "state_display": "District of Columbia",
+      "url": "https://lda.gov/api/v1/registrants/9090/",
+      "zip": "20005"
+    }
+  ]
+}

@@ -1,0 +1,167 @@
+{
+  "url": "https://lda.gov/api/v1/filings/6b613d78-b468-4ac6-b0d5-6926627fb136/",
+  "filing_uuid": "6b613d78-b468-4ac6-b0d5-6926627fb136",
+  "filing_type": "Q3",
+  "filing_type_display": "3rd Quarter - Report",
+  "filing_year": 2025,
+  "filing_period": "third_quarter",
+  "filing_period_display": "3rd Quarter (July 1 - Sep 30)",
+  "filing_document_url": "https://lda.gov/filings/public/filing/6b613d78-b468-4ac6-b0d5-6926627fb136/print/",
+  "filing_document_content_type": "text/html",
+  "income": null,
+  "expenses": null,
+  "expenses_method": null,
+  "expenses_method_display": null,
+  "posted_by_name": "Amy Blunt",
+  "dt_posted": "2025-08-07T16:33:53-04:00",
+  "termination_date": null,
+  "registrant_country": "United States of America",
+  "registrant_ppb_country": null,
+  "registrant_address_1": "733 10th St. NW,",
+  "registrant_address_2": "Suite 900",
+  "registrant_different_address": false,
+  "registrant_city": "Washington",
+  "registrant_state": "DC",
+  "registrant_zip": "20001",
+  "registrant": {
+    "id": 401104718,
+    "url": "https://lda.gov/api/v1/registrants/401104718/",
+    "house_registrant_id": 43894,
+    "name": "HB STRATEGIES",
+    "description": "Government Affairs Consulting",
+    "address_1": "733 10th St. NW,",
+    "address_2": "Suite 900",
+    "address_3": null,
+    "address_4": null,
+    "city": "Washington",
+    "state": "DC",
+    "state_display": "District of Columbia",
+    "zip": "20001",
+    "country": "US",
+    "country_display": "United States of America",
+    "ppb_country": "US",
+    "ppb_country_display": "United States of America",
+    "contact_name": "REDACTED",
+    "contact_telephone": "REDACTED",
+    "dt_updated": "2026-10-20T15:12:24.206892-04:00"
+  },
+  "client": {
+    "id": 66968,
+    "url": "https://lda.gov/api/v1/clients/66968/",
+    "client_id": 66968,
+    "name": "VIAMERICAS",
+    "general_description": "Financial Services",
+    "client_government_entity": null,
+    "client_self_select": false,
+    "state": "FL",
+    "state_display": "Florida",
+    "country": "US",
+    "country_display": "United States of America",
+    "ppb_state": "FL",
+    "ppb_state_display": "Florida",
+    "ppb_country": "US",
+    "ppb_country_display": "United States of America",
+    "effective_date": "2025-05-15"
+  },
+  "lobbying_activities": [
+    {
+      "general_issue_code": "TAX",
+      "general_issue_code_display": "Taxation/Internal Revenue Code",
+      "description": "House Reconciliation Bill, H.R. 1. Issues related to financial services, taxation and financial transactions, and crypto/stablecoin legislation.",
+      "foreign_entity_issues": "",
+      "lobbyists": [
+        {
+          "lobbyist": {
+            "id": 70784,
+            "prefix": null,
+            "prefix_display": null,
+            "first_name": "ERIC",
+            "nickname": null,
+            "middle_name": null,
+            "last_name": "LAUSTEN",
+            "suffix": null,
+            "suffix_display": null
+          },
+          "covered_position": "Chief of Staff - Rep Lipiniski, Legislative Director - Rep Acevedo Vila",
+          "new": false
+        },
+        {
+          "lobbyist": {
+            "id": 141341,
+            "prefix": null,
+            "prefix_display": null,
+            "first_name": "LYNNETTE",
+            "nickname": null,
+            "middle_name": null,
+            "last_name": "JACQUEZ",
+            "suffix": null,
+            "suffix_display": null
+          },
+          "covered_position": null,
+          "new": false
+        }
+      ],
+      "government_entities": [
+        {
+          "id": 2,
+          "name": "HOUSE OF REPRESENTATIVES"
+        },
+        {
+          "id": 1,
+          "name": "SENATE"
+        }
+      ]
+    },
+    {
+      "general_issue_code": "FIN",
+      "general_issue_code_display": "Financial Institutions/Investments/Securities",
+      "description": "House Reconciliation Bill, H.R. 1. Issues related to financial services, taxation and financial transactions, and crypto/stablecoin legislation.",
+      "foreign_entity_issues": "",
+      "lobbyists": [
+        {
+          "lobbyist": {
+            "id": 141341,
+            "prefix": null,
+            "prefix_display": null,
+            "first_name": "LYNNETTE",
+            "nickname": null,
+            "middle_name": null,
+            "last_name": "JACQUEZ",
+            "suffix": null,
+            "suffix_display": null
+          },
+          "covered_position": null,
+          "new": false
+        },
+        {
+          "lobbyist": {
+            "id": 70784,
+            "prefix": null,
+            "prefix_display": null,
+            "first_name": "ERIC",
+            "nickname": null,
+            "middle_name": null,
+            "last_name": "LAUSTEN",
+            "suffix": null,
+            "suffix_display": null
+          },
+          "covered_position": "Chief of Staff - Rep Lipinski, Legislative Director - Rep Acevedo Vila",
+          "new": false
+        }
+      ],
+      "government_entities": [
+        {
+          "id": 2,
+          "name": "HOUSE OF REPRESENTATIVES"
+        },
+        {
+          "id": 1,
+          "name": "SENATE"
+        }
+      ]
+    }
+  ],
+  "conviction_disclosures": [],
+  "foreign_entities": [],
+  "affiliated_organizations": []
+}

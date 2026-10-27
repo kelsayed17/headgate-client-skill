@@ -1,0 +1,344 @@
+{
+  "count": 21120,
+  "next": "https://lda.gov/api/v1/filings/?filing_type=Q3&filing_year=2025&page=2&page_size=2",
+  "previous": null,
+  "results": [
+    {
+      "url": "https://lda.gov/api/v1/filings/6b613d78-b468-4ac6-b0d5-6926627fb136/",
+      "filing_uuid": "6b613d78-b468-4ac6-b0d5-6926627fb136",
+      "filing_type": "Q3",
+      "filing_type_display": "3rd Quarter - Report",
+      "filing_year": 2025,
+      "filing_period": "third_quarter",
+      "filing_period_display": "3rd Quarter (July 1 - Sep 30)",
+      "filing_document_url": "https://lda.gov/filings/public/filing/6b613d78-b468-4ac6-b0d5-6926627fb136/print/",
+      "filing_document_content_type": "text/html",
+      "income": null,
+      "expenses": null,
+      "expenses_method": null,
+      "expenses_method_display": null,
+      "posted_by_name": "Amy Blunt",
+      "dt_posted": "2025-08-07T16:33:53-04:00",
+      "termination_date": null,
+      "registrant_country": "United States of America",
+      "registrant_ppb_country": null,
+      "registrant_address_1": "733 10th St. NW,",
+      "registrant_address_2": "Suite 900",
+      "registrant_different_address": false,
+      "registrant_city": "Washington",
+      "registrant_state": "DC",
+      "registrant_zip": "20001",
+      "registrant": {
+        "id": 401104718,
+        "url": "https://lda.gov/api/v1/registrants/401104718/",
+        "house_registrant_id": 43894,
+        "name": "HB STRATEGIES",
+        "description": "Government Affairs Consulting",
+        "address_1": "733 10th St. NW,",
+        "address_2": "Suite 900",
+        "address_3": null,
+        "address_4": null,
+        "city": "Washington",
+        "state": "DC",
+        "state_display": "District of Columbia",
+        "zip": "20001",
+        "country": "US",
+        "country_display": "United States of America",
+        "ppb_country": "US",
+        "ppb_country_display": "United States of America",
+        "contact_name": "REDACTED",
+        "contact_telephone": "REDACTED",
+        "dt_updated": "2026-10-20T15:12:24.206892-04:00"
+      },
+      "client": {
+        "id": 66968,
+        "url": "https://lda.gov/api/v1/clients/66968/",
+        "client_id": 66968,
+        "name": "VIAMERICAS",
+        "general_description": "Financial Services",
+        "client_government_entity": null,
+        "client_self_select": false,
+        "state": "FL",
+        "state_display": "Florida",
+        "country": "US",
+        "country_display": "United States of America",
+        "ppb_state": "FL",
+        "ppb_state_display": "Florida",
+        "ppb_country": "US",
+        "ppb_country_display": "United States of America",
+        "effective_date": "2025-05-15"
+      },
+      "lobbying_activities": [
+        {
+          "general_issue_code": "TAX",
+          "general_issue_code_display": "Taxation/Internal Revenue Code",
+          "description": "House Reconciliation Bill, H.R. 1. Issues related to financial services, taxation and financial transactions, and crypto/stablecoin legislation.",
+          "foreign_entity_issues": "",
+          "lobbyists": [
+            {
+              "lobbyist": {
+                "id": 70784,
+                "prefix": null,
+                "prefix_display": null,
+                "first_name": "ERIC",
+                "nickname": null,
+                "middle_name": null,
+                "last_name": "LAUSTEN",
+                "suffix": null,
+                "suffix_display": null
+              },
+              "covered_position": "Chief of Staff - Rep Lipiniski, Legislative Director - Rep Acevedo Vila",
+              "new": false
+            },
+            {
+              "lobbyist": {
+                "id": 141341,
+                "prefix": null,
+                "prefix_display": null,
+                "first_name": "LYNNETTE",
+                "nickname": null,
+                "middle_name": null,
+                "last_name": "JACQUEZ",
+                "suffix": null,
+                "suffix_display": null
+              },
+              "covered_position": null,
+              "new": false
+            }
+          ],
+          "government_entities": [
+            {
+              "id": 2,
+              "name": "HOUSE OF REPRESENTATIVES"
+            },
+            {
+              "id": 1,
+              "name": "SENATE"
+            }
+          ]
+        },
+        {
+          "general_issue_code": "FIN",
+          "general_issue_code_display": "Financial Institutions/Investments/Securities",
+          "description": "House Reconciliation Bill, H.R. 1. Issues related to financial services, taxation and financial transactions, and crypto/stablecoin legislation.",
+          "foreign_entity_issues": "",
+          "lobbyists": [
+            {
+              "lobbyist": {
+                "id": 141341,
+                "prefix": null,
+                "prefix_display": null,
+                "first_name": "LYNNETTE",
+                "nickname": null,
+                "middle_name": null,
+                "last_name": "JACQUEZ",
+                "suffix": null,
+                "suffix_display": null
+              },
+              "covered_position": null,
+              "new": false
+            },
+            {
+              "lobbyist": {
+                "id": 70784,
+                "prefix": null,
+                "prefix_display": null,
+                "first_name": "ERIC",
+                "nickname": null,
+                "middle_name": null,
+                "last_name": "LAUSTEN",
+                "suffix": null,
+                "suffix_display": null
+              },
+              "covered_position": "Chief of Staff - Rep Lipinski, Legislative Director - Rep Acevedo Vila",
+              "new": false
+            }
+          ],
+          "government_entities": [
+            {
+              "id": 2,
+              "name": "HOUSE OF REPRESENTATIVES"
+            },
+            {
+              "id": 1,
+              "name": "SENATE"
+            }
+          ]
+        }
+      ],
+      "conviction_disclosures": [],
+      "foreign_entities": [],
+      "affiliated_organizations": []
+    },
+    {
+      "url": "https://lda.gov/api/v1/filings/dcbee8c7-7239-4b25-b769-446c6062182c/",
+      "filing_uuid": "dcbee8c7-7239-4b25-b769-446c6062182c",
+      "filing_type": "Q3",
+      "filing_type_display": "3rd Quarter - Report",
+      "filing_year": 2025,
+      "filing_period": "third_quarter",
+      "filing_period_display": "3rd Quarter (July 1 - Sep 30)",
+      "filing_document_url": "https://lda.gov/filings/public/filing/dcbee8c7-7239-4b25-b769-446c6062182c/print/",
+      "filing_document_content_type": "text/html",
+      "income": null,
+      "expenses": "8000.00",
+      "expenses_method": "B",
+      "expenses_method_display": "B",
+      "posted_by_name": "Dorian Karp",
+      "dt_posted": "2025-08-12T10:07:00-04:00",
+      "termination_date": null,
+      "registrant_country": "United States of America",
+      "registrant_ppb_country": "United States of America",
+      "registrant_address_1": "403 E Melbourne Ave",
+      "registrant_address_2": null,
+      "registrant_different_address": true,
+      "registrant_city": "Silver Spring",
+      "registrant_state": "MD",
+      "registrant_zip": "20901",
+      "registrant": {
+        "id": 401103816,
+        "url": "https://lda.gov/api/v1/registrants/401103816/",
+        "house_registrant_id": 43062,
+        "name": "NATIONAL DOMESTIC VIOLENCE HOTLINE",
+        "description": "Protections and services for victims of domestic violence",
+        "address_1": "8109 Custer Rd",
+        "address_2": null,
+        "address_3": null,
+        "address_4": null,
+        "city": "Bethesda",
+        "state": "MD",
+        "state_display": "Maryland",
+        "zip": "20814",
+        "country": "US",
+        "country_display": "United States of America",
+        "ppb_country": "US",
+        "ppb_country_display": "United States of America",
+        "contact_name": "REDACTED",
+        "contact_telephone": "REDACTED",
+        "dt_updated": "2026-09-28T15:28:59.364122-04:00"
+      },
+      "client": {
+        "id": 200196,
+        "url": "https://lda.gov/api/v1/clients/200196/",
+        "client_id": 12,
+        "name": "NATIONAL DOMESTIC VIOLENCE HOTLINE",
+        "general_description": null,
+        "client_government_entity": false,
+        "client_self_select": true,
+        "state": "DC",
+        "state_display": "District of Columbia",
+        "country": "US",
+        "country_display": "United States of America",
+        "ppb_state": "DC",
+        "ppb_state_display": "District of Columbia",
+        "ppb_country": "US",
+        "ppb_country_display": "United States of America",
+        "effective_date": "2016-01-01"
+      },
+      "lobbying_activities": [
+        {
+          "general_issue_code": "HCR",
+          "general_issue_code_display": "Health Issues",
+          "description": "access to medical support and coverage for survivors of domestic violence, public health interventions in domestic violence, Family Violence Prevention and Services Act",
+          "foreign_entity_issues": "",
+          "lobbyists": [
+            {
+              "lobbyist": {
+                "id": 144227,
+                "prefix": null,
+                "prefix_display": null,
+                "first_name": "DORIAN",
+                "nickname": null,
+                "middle_name": null,
+                "last_name": "KARP",
+                "suffix": null,
+                "suffix_display": null
+              },
+              "covered_position": null,
+              "new": true
+            }
+          ],
+          "government_entities": [
+            {
+              "id": 2,
+              "name": "HOUSE OF REPRESENTATIVES"
+            },
+            {
+              "id": 1,
+              "name": "SENATE"
+            }
+          ]
+        },
+        {
+          "general_issue_code": "LAW",
+          "general_issue_code_display": "Law Enforcement/Crime/Criminal Justice",
+          "description": "Violence Against Women Act, domestic violence, dating violence, stalking laws, cyber crimes",
+          "foreign_entity_issues": "",
+          "lobbyists": [
+            {
+              "lobbyist": {
+                "id": 144227,
+                "prefix": null,
+                "prefix_display": null,
+                "first_name": "DORIAN",
+                "nickname": null,
+                "middle_name": null,
+                "last_name": "KARP",
+                "suffix": null,
+                "suffix_display": null
+              },
+              "covered_position": null,
+              "new": false
+            }
+          ],
+          "government_entities": [
+            {
+              "id": 2,
+              "name": "HOUSE OF REPRESENTATIVES"
+            },
+            {
+              "id": 1,
+              "name": "SENATE"
+            }
+          ]
+        },
+        {
+          "general_issue_code": "WEL",
+          "general_issue_code_display": "Welfare",
+          "description": "public benefits (Medicaid and SNAP) for victims of domestic violence, family violence option in TANF",
+          "foreign_entity_issues": "",
+          "lobbyists": [
+            {
+              "lobbyist": {
+                "id": 144227,
+                "prefix": null,
+                "prefix_display": null,
+                "first_name": "DORIAN",
+                "nickname": null,
+                "middle_name": null,
+                "last_name": "KARP",
+                "suffix": null,
+                "suffix_display": null
+              },
+              "covered_position": null,
+              "new": false
+            }
+          ],
+          "government_entities": [
+            {
+              "id": 2,
+              "name": "HOUSE OF REPRESENTATIVES"
+            },
+            {
+              "id": 1,
+              "name": "SENATE"
+            }
+          ]
+        }
+      ],
+      "conviction_disclosures": [],
+      "foreign_entities": [],
+      "affiliated_organizations": []
+    }
+  ]
+}

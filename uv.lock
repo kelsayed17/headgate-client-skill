@@ -104,6 +104,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "anyio" },
     { name = "headgate", extra = ["msgspec", "pydantic"] },
     { name = "pytest" },
     { name = "ruff" },
@@ -120,6 +121,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "anyio", specifier = ">=4.15" },
     { name = "headgate", extras = ["msgspec", "pydantic"], specifier = ">=0.7.0" },
     { name = "pytest", specifier = ">=9.1" },
     { name = "ruff" },

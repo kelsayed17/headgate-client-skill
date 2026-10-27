@@ -1,0 +1,73 @@
+{
+  "count": 31,
+  "next": "https://lda.gov/api/v1/lobbyists/?page=2&page_size=2&registrant_id=401104718",
+  "previous": null,
+  "results": [
+    {
+      "id": 67392,
+      "prefix": null,
+      "prefix_display": null,
+      "first_name": "JOHN",
+      "nickname": null,
+      "middle_name": null,
+      "last_name": "ARIALE",
+      "suffix": null,
+      "suffix_display": null,
+      "registrant": {
+        "id": 401104718,
+        "url": "https://lda.gov/api/v1/registrants/401104718/",
+        "house_registrant_id": 43894,
+        "name": "HB STRATEGIES",
+        "description": "Government Affairs Consulting",
+        "address_1": "733 10th St. NW,",
+        "address_2": "Suite 900",
+        "address_3": null,
+        "address_4": null,
+        "city": "Washington",
+        "state": "DC",
+        "state_display": "District of Columbia",
+        "zip": "20001",
+        "country": "US",
+        "country_display": "United States of America",
+        "ppb_country": "US",
+        "ppb_country_display": "United States of America",
+        "contact_name": "REDACTED",
+        "contact_telephone": "REDACTED",
+        "dt_updated": "2026-10-20T15:12:24.206892-04:00"
+      }
+    },
+    {
+      "id": 67394,
+      "prefix": null,
+      "prefix_display": null,
+      "first_name": "WILLIAM",
+      "nickname": null,
+      "middle_name": null,
+      "last_name": "FOX",
+      "suffix": null,
+      "suffix_display": null,
+      "registrant": {
+        "id": 401104718,
+        "url": "https://lda.gov/api/v1/registrants/401104718/",
+        "house_registrant_id": 43894,
+        "name": "HB STRATEGIES",
+        "description": "Government Affairs Consulting",
+        "address_1": "733 10th St. NW,",
+        "address_2": "Suite 900",
+        "address_3": null,
+        "address_4": null,
+        "city": "Washington",
+        "state": "DC",
+        "state_display": "District of Columbia",
+        "zip": "20001",
+        "country": "US",
+        "country_display": "United States of America",
+        "ppb_country": "US",
+        "ppb_country_display": "United States of America",
+        "contact_name": "REDACTED",
+        "contact_telephone": "REDACTED",
+        "dt_updated": "2026-10-20T15:12:24.206892-04:00"
+      }
+    }
+  ]
+}

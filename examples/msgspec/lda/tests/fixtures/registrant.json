@@ -1,0 +1,22 @@
+{
+  "id": 401104718,
+  "url": "https://lda.gov/api/v1/registrants/401104718/",
+  "house_registrant_id": 43894,
+  "name": "HB STRATEGIES",
+  "description": "Government Affairs Consulting",
+  "address_1": "733 10th St. NW,",
+  "address_2": "Suite 900",
+  "address_3": null,
+  "address_4": null,
+  "city": "Washington",
+  "state": "DC",
+  "state_display": "District of Columbia",
+  "zip": "20001",
+  "country": "US",
+  "country_display": "United States of America",
+  "ppb_country": "US",
+  "ppb_country_display": "United States of America",
+  "contact_name": "REDACTED",
+  "contact_telephone": "REDACTED",
+  "dt_updated": "2026-10-20T15:12:24.206892-04:00"
+}
