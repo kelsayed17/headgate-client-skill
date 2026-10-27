@@ -18,19 +18,20 @@ reported; such a class takes an allow comment.
 import re
 from typing import TYPE_CHECKING
 
-from headgate_verify.finding import Finding
+from headgate_verify.finding import Rule
+from headgate_verify.syntax import classes, line
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
-    from ast_grep_py import SgRoot
-
     from headgate_verify.config import Config
+    from headgate_verify.finding import Finding
     from headgate_verify.package import Package
+    from headgate_verify.parsing import Modules
 
-RULE = "model-has-no-provider-prefix"
-FIX = "Drop the provider name from the class name: `LdaFiling` in package `lda` is `Filing`."
-"""How to fix a ``model-has-no-provider-prefix`` finding."""
+RULE = Rule(
+    id="model-has-no-provider-prefix",
+    severity="error",
+    fix="Drop the provider name from the class name: `LdaFiling` in package `lda` is `Filing`.",
+)
 _MODELS = "models.py"
 _WORDS = re.compile(r"[^A-Za-z0-9]+")
 _REQUEST_SUFFIXES = ("Params", "Body")
@@ -51,25 +52,20 @@ def _prefixed(name: str, prefix: str) -> bool:
     return not rest or rest[0].isupper() or rest[0].isdigit() or rest[0] == "_"
 
 
-def check(pkg: Package, modules: dict[Path, SgRoot], config: Config) -> list[Finding]:
+def check(pkg: Package, modules: Modules, config: Config) -> list[Finding]:
     """Return a finding for each class in ``models.py`` whose name starts with the provider's name."""
     del config
-    root = modules.get(pkg.root / _MODELS)
+    path = pkg.root / _MODELS
+    root = modules.get(path)
     if root is None:
         return []
     prefix = provider_prefix(pkg.root.name)
-    findings: list[Finding] = []
-    for node in root.root().find_all(kind="class_definition"):
-        name = node.field("name")
-        if name is not None and _prefixed(name.text(), prefix):
-            findings.append(
-                Finding(
-                    RULE,
-                    pkg.root / _MODELS,
-                    node.range().start.line + 1,
-                    f"the model class {name.text()} starts with the provider name {prefix}; the module path already "
-                    "says the provider",
-                    "error",
-                )
-            )
-    return findings
+    return [
+        RULE.finding(
+            path,
+            line(node),
+            f"the model class {name} starts with the provider name {prefix}; the module path already says the provider",
+        )
+        for _, node, name in classes({path: root})
+        if _prefixed(name, prefix)
+    ]

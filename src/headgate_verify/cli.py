@@ -53,20 +53,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"headgate-verify: no client package (a directory holding client.py) under {path}\n" for path in error.paths
         )
         return _USAGE_ERROR
-    findings = engine.verify(args.paths, config)
+    findings = engine.verify_packages(packages, config)
     if args.format == "json":
-        rows = [
-            {
-                "rule": f.rule,
-                "path": str(f.path),
-                "line": f.line,
-                "message": f.message,
-                "severity": f.severity,
-                "fix": f.fix,
-            }
-            for f in findings
-        ]
-        sys.stdout.write(json.dumps(rows, indent=2) + "\n")
+        sys.stdout.write(json.dumps([finding.to_json() for finding in findings], indent=2) + "\n")
     else:
         sys.stdout.writelines(_text(finding) for finding in findings)
     sys.stderr.write(f"checked {len(packages)} package(s)\n")

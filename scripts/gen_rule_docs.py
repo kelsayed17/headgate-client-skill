@@ -3,9 +3,9 @@
 
 """Write the skill's ``references/verifier.md`` from the rules and checks ``headgate-verify`` runs.
 
-The rule list is read from the verifier itself: every YAML rule (``load_rules()``: id, severity, message, and the
-``Config`` fields it reads, and its ``note`` as the fix) and every Python check (``CHECKS``: id, severity from
-``WARNING_CHECKS``, the first sentence its module docstring gives after the check's id, and its ``FIXES`` entry).
+The rule list is read from the verifier itself: every YAML rule (``load_rules()``: id, severity, message, the
+``Config`` fields it reads, and its ``note`` as the fix) and every Python check (``CHECKS``: its ``RULE``'s id,
+severity and fix, and the first sentence its module docstring gives after the check's id).
 Run it after changing a rule; ``--check`` exits 1, writing nothing, when the file is not what it would write (CI and
 ``tests/test_repo.py`` run that).
 
@@ -20,15 +20,16 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from headgate_verify.checks import CHECKS, FIXES, WARNING_CHECKS
+from headgate_verify.checks import CHECKS
 from headgate_verify.config import Config
-from headgate_verify.rules import BAD_EXEMPTION, PARSE_ERROR, RESERVED_FIXES, YamlRule, load_rules
+from headgate_verify.exemptions import BAD_EXEMPTION
+from headgate_verify.parsing import PARSE_ERROR
+from headgate_verify.rules import RESERVED, load_rules
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
 OUTPUT = Path(__file__).parent.parent / "skills" / "building-headgate-clients" / "references" / "verifier.md"
-_PLACEHOLDER = re.compile(r"\{\{config\.(\w+)\}\}")
 _SPACE = re.compile(r"\s+")
 _NAMING_FIELDS = frozenset({"filler_words", "post_reads"})
 """The ``Config`` fields ``check_names`` defaults from the package's pyproject (ruling R26); no YAML rule reads them."""
@@ -60,26 +61,12 @@ def _check_message(rule_id: str, module_name: str) -> str:
     return _SPACE.sub(" ", match.group(1)).replace("``", "`")
 
 
-def _config_fields(rule: YamlRule) -> tuple[str, ...]:
-    """Return the ``Config`` fields a YAML rule reads: its placeholders and its ``skip-packages-in`` field."""
-    names: set[str] = {str(name) for name in _PLACEHOLDER.findall(rule.source)}
-    if rule.skip_packages_in is not None:
-        names.add(rule.skip_packages_in)
-    return tuple(sorted(names))
-
-
 def rows() -> list[Row]:
     """Return every YAML rule and Python check, sorted by id."""
-    found = [Row(rule.id, rule.severity, rule.message, _config_fields(rule), rule.note) for rule in load_rules()]
+    found = [Row(rule.id, rule.severity, rule.message, rule.config_fields, rule.fix) for rule in load_rules()]
     found += [
-        Row(
-            name,
-            "warning" if name in WARNING_CHECKS else "error",
-            _check_message(name, check.__module__),
-            (),
-            FIXES[name],
-        )
-        for name, check in CHECKS
+        Row(check.rule.id, check.rule.severity, _check_message(check.rule.id, check.run.__module__), (), check.rule.fix)
+        for check in CHECKS
     ]
     return sorted(found, key=lambda row: row.id)
 
@@ -178,13 +165,18 @@ found, and the line here is the check's summary.
 |---|---|---|
 """
 
-_TAIL = f"""
+_RESERVED_MEANINGS = {
+    BAD_EXEMPTION.id: "an allow comment is malformed, has no reason, names no known rule, or drops nothing",
+    PARSE_ERROR.id: "a module cannot be read or parsed (Python's parser, then tree-sitter's); no rule read it",
+}
+"""What each finding the engine itself reports means, by id."""
+
+_TAIL = """
 Two findings come from the verifier itself, not a rule:
 
 | Finding | Severity | Meaning |
 |---|---|---|
-| `{BAD_EXEMPTION}` | error | an allow comment is malformed, has no reason, names no known rule, or drops nothing |
-| `{PARSE_ERROR}` | error | a module cannot be read or parsed (Python's parser, then tree-sitter's); no rule read it |
+{RESERVED}
 
 ## How to fix each rule
 
@@ -193,7 +185,7 @@ prints it under the finding; `--format json` gives it as `fix`.
 
 | Rule | How to fix |
 |---|---|
-{{FIXES}}
+{FIXES}
 
 ## What it does not check
 
@@ -209,8 +201,9 @@ def render() -> str:
     """Return the text of ``references/verifier.md``."""
     table = [f"| `{row.id}` | {row.severity} | {_cell(row.message)} |" for row in rows()]
     fixes = [f"| `{row.id}` | {_cell(row.fix)} |" for row in rows()]
-    fixes += [f"| `{rule_id}` | {_cell(fix)} |" for rule_id, fix in sorted(RESERVED_FIXES.items())]
-    tail = _TAIL.replace("{FIXES}", "\n".join(fixes))
+    fixes += [f"| `{rule.id}` | {_cell(rule.fix)} |" for rule in sorted(RESERVED, key=lambda rule: rule.id)]
+    reserved = [f"| `{rule.id}` | {rule.severity} | {_RESERVED_MEANINGS[rule.id]} |" for rule in RESERVED]
+    tail = _TAIL.replace("{RESERVED}", "\n".join(reserved)).replace("{FIXES}", "\n".join(fixes))
     return _HEAD + "\n".join(_config_rows()) + "\n" + _MIDDLE + "\n".join(table) + "\n" + tail
 
 

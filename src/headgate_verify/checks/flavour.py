@@ -29,25 +29,28 @@ from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
 from headgate_verify.config import nearest_pyproject
-from headgate_verify.finding import Finding
+from headgate_verify.finding import Rule
+from headgate_verify.syntax import imported_names, line
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    from ast_grep_py import SgNode, SgRoot
+    from ast_grep_py import SgNode
 
     from headgate_verify.config import Config
+    from headgate_verify.finding import Finding
     from headgate_verify.package import Package
+    from headgate_verify.parsing import Modules
 
 type Flavour = Literal["msgspec", "pydantic"]
 
-RULE = "one-flavour"
-FIX = (
-    "Use one model flavour (msgspec or pydantic) across the package, and declare `headgate[<flavour>]` in the "
-    "nearest pyproject.toml."
+RULE = Rule(
+    id="one-flavour",
+    severity="error",
+    fix="Use one model flavour (msgspec or pydantic) across the package, and declare `headgate[<flavour>]` in the "
+    "nearest pyproject.toml.",
 )
-"""How to fix a ``one-flavour`` finding."""
 _FLAVOURS: tuple[Flavour, ...] = ("msgspec", "pydantic")
 _HEADGATE = "headgate"
 
@@ -67,14 +70,8 @@ def _flavour_of_module(dotted: str) -> Flavour | None:
     return None
 
 
-def _imported(name: SgNode) -> str:
-    """Return the dotted name an import names, without its ``as`` alias."""
-    original = name.field("name") if name.kind() == "aliased_import" else name
-    return "" if original is None else original.text()
-
-
 def _flavours_of_statement(statement: SgNode) -> Iterator[Flavour]:
-    names = [_imported(name) for name in statement.field_children("name")]
+    names = [original for original, _ in imported_names(statement)]
     if statement.kind() == "import_statement":
         modules = names
     else:
@@ -87,10 +84,10 @@ def _flavours_of_statement(statement: SgNode) -> Iterator[Flavour]:
             yield flavour
 
 
-def _imports(modules: dict[Path, SgRoot]) -> list[_Import]:
+def _imports(modules: Modules) -> list[_Import]:
     """Return every flavour import of the package, in path then line order."""
     found = [
-        _Import(path, statement.range().start.line + 1, flavour)
+        _Import(path, line(statement), flavour)
         for path, root in modules.items()
         for statement in root.root().find_all(any=[{"kind": "import_statement"}, {"kind": "import_from_statement"}])
         for flavour in _flavours_of_statement(statement)
@@ -98,7 +95,7 @@ def _imports(modules: dict[Path, SgRoot]) -> list[_Import]:
     return sorted(found)
 
 
-def detect_flavour(modules: dict[Path, SgRoot]) -> Flavour | None:
+def detect_flavour(modules: Modules) -> Flavour | None:
     """Return the one flavour the modules import, or None when they import neither or both."""
     flavours = {found.flavour for found in _imports(modules)}
     return next(iter(flavours)) if len(flavours) == 1 else None
@@ -183,7 +180,7 @@ def _extra_problem(pkg: Package, flavour: Flavour) -> str | None:
     )
 
 
-def check(pkg: Package, modules: dict[Path, SgRoot], config: Config) -> list[Finding]:
+def check(pkg: Package, modules: Modules, config: Config) -> list[Finding]:
     """Return the ``one-flavour`` findings of ``pkg``."""
     del config
     imports = _imports(modules)
@@ -193,14 +190,12 @@ def check(pkg: Package, modules: dict[Path, SgRoot], config: Config) -> list[Fin
     other = next((found for found in imports if found.flavour != first.flavour), None)
     if other is not None:
         return [
-            Finding(
-                RULE,
+            RULE.finding(
                 other.path,
                 other.line,
                 f"the package imports both flavours: {first.flavour} at {first.path.name}:{first.line} and "
                 f"{other.flavour} here; a client package uses one",
-                "error",
             )
         ]
     problem = _extra_problem(pkg, first.flavour)
-    return [] if problem is None else [Finding(RULE, first.path, first.line, problem, "error")]
+    return [] if problem is None else [RULE.finding(first.path, first.line, problem)]

@@ -35,7 +35,17 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
-from headgate_verify.finding import Finding
+from headgate_verify.finding import Rule
+from headgate_verify.syntax import (
+    arguments,
+    assignments,
+    bases,
+    classes,
+    imported_names,
+    keyword_argument,
+    line,
+    string_body,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -43,17 +53,18 @@ if TYPE_CHECKING:
     from ast_grep_py import SgNode, SgRoot
 
     from headgate_verify.config import Config
+    from headgate_verify.finding import Finding
     from headgate_verify.package import Package
+    from headgate_verify.parsing import Modules
 
-RULE = "one-class-per-host"
-FIX = (
-    "Give each host its own class, subclassing only AsyncBaseClient and passing `base_url=` a module-level name of "
-    "its module; move a call to another host into that host's class."
+RULE = Rule(
+    id="one-class-per-host",
+    severity="error",
+    fix="Give each host its own class, subclassing only AsyncBaseClient and passing `base_url=` a module-level name "
+    "of its module; move a call to another host into that host's class.",
 )
-"""How to fix a ``one-class-per-host`` finding."""
 _BASE = "AsyncBaseClient"
 _VERBS = frozenset({"get", "post", "put", "patch", "delete", "head", "stream", "paginate"})
-_STRING_PREFIX = re.compile(r"^[rRbBuUfFtT]*('''|\"\"\"|'|\")")
 _ABSOLUTE = re.compile(r"^https?://", re.IGNORECASE)
 
 
@@ -67,23 +78,11 @@ class _Class:
 
     @property
     def line(self) -> int:
-        return self.node.range().start.line + 1
+        return line(self.node)
 
-
-def _finding(path: Path, line: int, message: str) -> Finding:
-    return Finding(RULE, path, line, message, "error")
-
-
-def _string_text(node: SgNode) -> str | None:
-    """Return the text between a string literal's quotes (holes kept as written), or None for any other node."""
-    if node.kind() != "string":
-        return None
-    text = node.text()
-    prefix = _STRING_PREFIX.match(text)
-    if prefix is None:
-        return None
-    quote = prefix.group(1)
-    return text[prefix.end() : len(text) - len(quote)]
+    def finding(self, message: str, at: SgNode | None = None) -> Finding:
+        """Return a finding in this class's module, at ``at`` or else at the class's own line."""
+        return RULE.finding(self.path, self.line if at is None else line(at), message)
 
 
 def _host(url: str) -> str | None:
@@ -95,21 +94,6 @@ def _host(url: str) -> str | None:
     except ValueError:
         return url
     return host or url
-
-
-def _assignments(block: SgNode) -> dict[str, SgNode]:
-    """Return ``name -> value`` for each ``name = value`` (or ``name: T = value``) directly in ``block``."""
-    values: dict[str, SgNode] = {}
-    for statement in block.children():
-        if statement.kind() != "expression_statement":
-            continue
-        for assignment in statement.children():
-            if assignment.kind() != "assignment":
-                continue
-            left, right = assignment.field("left"), assignment.field("right")
-            if left is not None and right is not None and left.kind() == "identifier":
-                values[left.text()] = right
-    return values
 
 
 @dataclass(frozen=True)
@@ -127,89 +111,59 @@ def _imports(root: SgRoot) -> dict[str, _Import]:
             continue
         module = statement.field("module_name")
         source = module.text().lstrip(".") if module is not None else ""
-        for name in statement.field_children("name"):
-            original = name.field("name") if name.kind() == "aliased_import" else name
-            alias = name.field("alias") if name.kind() == "aliased_import" else name
-            if original is not None and alias is not None:
-                bound[alias.text()] = _Import(source, original.text())
+        for original, alias in imported_names(statement):
+            bound[alias] = _Import(source, original)
     return bound
 
 
 def _module_names(root: SgRoot) -> set[str]:
     """Return every name bound at module level by an assignment or an import."""
-    names = set(_assignments(root.root())) | set(_imports(root))
+    names = set(assignments(root.root())) | set(_imports(root))
     for statement in root.root().children():
         if statement.kind() == "import_statement":
-            for name in statement.field_children("name"):
-                bound = name.field("alias") if name.kind() == "aliased_import" else name
-                if bound is not None:
-                    names.add(bound.text().split(".", 1)[0])
+            names.update(bound.split(".", 1)[0] for _, bound in imported_names(statement))
     return names
 
 
-def _client_classes(modules: dict[Path, SgRoot]) -> list[_Class]:
+def _client_classes(modules: Modules) -> list[_Class]:
     """Return every class whose bases name ``AsyncBaseClient`` or, transitively, another such class of the package."""
-    classes = [
-        _Class(path, root, node, name.text(), tuple(_bases(node)))
-        for path, root in modules.items()
-        for node in root.root().find_all(kind="class_definition")
-        if (name := node.field("name")) is not None
-    ]
+    found = [(path, node, name, tuple(bases(node))) for path, node, name in classes(modules)]
     names = {_BASE}
-    clients: list[_Class] = []
+    clients: dict[int, _Class] = {}
     changed = True
     while changed:
         changed = False
-        for cls in classes:
-            if cls not in clients and any(base.text() in names for base in cls.bases):
-                clients.append(cls)
-                names.add(cls.name)
+        for index, (path, node, name, node_bases) in enumerate(found):
+            if index not in clients and any(base.text() in names for base in node_bases):
+                clients[index] = _Class(path, modules[path], node, name, node_bases)
+                names.add(name)
                 changed = True
-    return clients
-
-
-def _bases(node: SgNode) -> list[SgNode]:
-    superclasses = node.field("superclasses")
-    if superclasses is None:
-        return []
-    return [child for child in superclasses.children() if child.is_named() and child.kind() != "keyword_argument"]
+    return list(clients.values())
 
 
 def _base_url(cls: _Class) -> SgNode | None:
     """Return the ``base_url=`` value of the class's ``super().__init__(...)`` call, or None."""
     for call in cls.node.find_all(pattern="super().__init__($$$)"):
-        arguments = call.field("arguments")
-        if arguments is None:
-            continue
-        for argument in arguments.children():
-            if argument.kind() != "keyword_argument":
-                continue
-            name, value = argument.field("name"), argument.field("value")
-            if name is not None and value is not None and name.text() == "base_url":
-                return value
+        value = keyword_argument(call, "base_url")
+        if value is not None:
+            return value
     return None
 
 
-def _constant_text(name: str, root: SgRoot, modules: dict[Path, SgRoot]) -> str | None:
+def _constant_text(name: str, root: SgRoot, modules: Modules) -> str | None:
     """Return the module-level string ``name`` of ``root`` holds, following one sibling-module import."""
-    value = _assignments(root.root()).get(name)
+    value = assignments(root.root()).get(name)
     if value is not None:
-        return _string_text(value)
+        return string_body(value)
     imported = _imports(root).get(name)
     if imported is None:
         return None
     stem = imported.module.rsplit(".", 1)[-1]
     for path, sibling in modules.items():
         if path.stem == stem:
-            value = _assignments(sibling.root()).get(imported.name)
-            return None if value is None else _string_text(value)
+            value = assignments(sibling.root()).get(imported.name)
+            return None if value is None else string_body(value)
     return None
-
-
-def _constant_host(name: str, root: SgRoot, modules: dict[Path, SgRoot]) -> str | None:
-    """Return the host of the module-level string ``name`` of ``root``, following one sibling-module import."""
-    text = _constant_text(name, root, modules)
-    return None if text is None else _host(text)
 
 
 @dataclass(frozen=True)
@@ -219,22 +173,22 @@ class _Base:
     host: str | None
 
 
-def _read_base(cls: _Class, modules: dict[Path, SgRoot], findings: list[Finding]) -> _Base | None:
+def _read_base(cls: _Class, modules: Modules, findings: list[Finding]) -> _Base | None:
     value = _base_url(cls)
     if value is None:
-        findings.append(_finding(cls.path, cls.line, f"class {cls.name} passes no base_url= to super().__init__"))
+        findings.append(cls.finding(f"class {cls.name} passes no base_url= to super().__init__"))
         return None
     if value.kind() != "identifier" or value.text() not in _module_names(cls.root):
         findings.append(
-            _finding(
-                cls.path,
-                value.range().start.line + 1,
+            cls.finding(
                 f"class {cls.name} passes base_url={value.text()}, which is not a module-level name; name each host "
                 "once at module level and pass that name",
+                at=value,
             )
         )
         return None
-    return _Base(cls, value.text(), _constant_host(value.text(), cls.root, modules))
+    text = _constant_text(value.text(), cls.root, modules)
+    return _Base(cls, value.text(), None if text is None else _host(text))
 
 
 def _check_bases(clients: list[_Class], findings: list[Finding]) -> set[str]:
@@ -246,20 +200,16 @@ def _check_bases(clients: list[_Class], findings: list[Finding]) -> set[str]:
             if base.text() in client_names:
                 chained.update({cls.name, base.text()})
                 findings.append(
-                    _finding(
-                        cls.path,
-                        cls.line,
+                    cls.finding(
                         f"class {cls.name} subclasses the client class {base.text()}; give each host its own class "
-                        f"on {_BASE} and share helpers as module-level values",
+                        f"on {_BASE} and share helpers as module-level values"
                     )
                 )
             elif base.text() != _BASE:
                 findings.append(
-                    _finding(
-                        cls.path,
-                        cls.line,
+                    cls.finding(
                         f"class {cls.name} has a base besides {_BASE}: {base.text()}; a client class subclasses "
-                        f"{_BASE} alone",
+                        f"{_BASE} alone"
                     )
                 )
     return chained
@@ -273,11 +223,9 @@ def _check_distinct(bases: list[_Base], findings: list[Finding]) -> None:
         first = by_name.setdefault(base.name, base)
         if first is not base:
             findings.append(
-                _finding(
-                    cls.path,
-                    cls.line,
+                cls.finding(
                     f"class {cls.name} shares its base URL name {base.name} with class {first.cls.name}; one class "
-                    "per host",
+                    "per host"
                 )
             )
             continue
@@ -286,31 +234,24 @@ def _check_distinct(bases: list[_Base], findings: list[Finding]) -> None:
         first = by_host.setdefault(base.host, base)
         if first is not base:
             findings.append(
-                _finding(
-                    cls.path,
-                    cls.line,
-                    f"class {cls.name} calls host {base.host}, as class {first.cls.name} does; one class per host",
+                cls.finding(
+                    f"class {cls.name} calls host {base.host}, as class {first.cls.name} does; one class per host"
                 )
             )
 
 
 def _url_argument(call: SgNode) -> SgNode | None:
-    arguments = call.field("arguments")
-    if arguments is None:
-        return None
-    for argument in arguments.children():
-        if argument.kind() == "keyword_argument":
-            name = argument.field("name")
-            if name is not None and name.text() == "url":
-                return argument.field("value")
-        elif argument.is_named() and argument.kind() != "comment":
-            return argument
-    return None
+    """Return the URL a verb call passes: its ``url=`` argument, else its first positional argument."""
+    url = keyword_argument(call, "url")
+    if url is not None:
+        return url
+    positional, _ = arguments(call)
+    return positional[0] if positional else None
 
 
-def _url_text(argument: SgNode, cls: _Class, modules: dict[Path, SgRoot]) -> str | None:
+def _url_text(argument: SgNode, cls: _Class, modules: Modules) -> str | None:
     """Return the string a verb's URL argument holds when it is a literal, a module constant or a class attribute."""
-    literal = _string_text(argument)
+    literal = string_body(argument)
     if literal is not None:
         return literal
     if argument.kind() == "identifier":
@@ -320,11 +261,11 @@ def _url_text(argument: SgNode, cls: _Class, modules: dict[Path, SgRoot]) -> str
         owner, attribute = argument.field("object"), argument.field("attribute")
         body = cls.node.field("body")
         if owner is not None and attribute is not None and body is not None and owner.text() in {"self", cls.name}:
-            value = _assignments(body).get(attribute.text())
-    return None if value is None else _string_text(value)
+            value = assignments(body).get(attribute.text())
+    return None if value is None else string_body(value)
 
 
-def _check_verbs(cls: _Class, base: _Base | None, modules: dict[Path, SgRoot], findings: list[Finding]) -> None:
+def _check_verbs(cls: _Class, base: _Base | None, modules: Modules, findings: list[Finding]) -> None:
     host, base_name = (None, None) if base is None else (base.host, base.name)
     for call in cls.node.find_all(pattern="self.$VERB($$$)"):
         verb = call.get_match("VERB")
@@ -341,26 +282,25 @@ def _check_verbs(cls: _Class, base: _Base | None, modules: dict[Path, SgRoot], f
             else "but its base URL host cannot be read, so the URL cannot be shown to stay on it"
         )
         findings.append(
-            _finding(
-                cls.path,
-                call.range().start.line + 1,
+            cls.finding(
                 f"class {cls.name} passes an absolute URL on host {url_host} to self.{verb.text()}, {where}; another "
                 "host gets its own class",
+                at=call,
             )
         )
 
 
-def check(pkg: Package, modules: dict[Path, SgRoot], config: Config) -> list[Finding]:
+def check(pkg: Package, modules: Modules, config: Config) -> list[Finding]:
     """Return the ``one-class-per-host`` findings of ``pkg``."""
     del pkg, config
     findings: list[Finding] = []
     clients = _client_classes(modules)
     chained = _check_bases(clients, findings)
-    bases: list[_Base] = []
+    read: list[_Base] = []
     for cls in clients:
         base = None if cls.name in chained else _read_base(cls, modules, findings)
         if base is not None:
-            bases.append(base)
+            read.append(base)
         _check_verbs(cls, base, modules, findings)
-    _check_distinct(bases, findings)
+    _check_distinct(read, findings)
     return findings

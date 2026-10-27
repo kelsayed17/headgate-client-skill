@@ -6,7 +6,7 @@
 Conventions, for whoever adds a rule or a check:
 
 * One directory per rule id, ``tests/rules/<rule-id>/``, with a ``fail/`` and a ``pass/`` directory. The id is the
-  YAML rule's file stem, the name a Python check registers in ``CHECKS``, or a reserved id (``parse-error``,
+  YAML rule's file stem, the ``RULE`` id of a Python check in ``CHECKS``, or a reserved id (``parse-error``,
   ``bad-exemption``). ``test_every_rule_has_fixtures`` fails for a rule with no ``fail`` or no ``pass`` entry, and
   for a fixture directory that names no rule.
 * Every entry in ``fail/`` must yield at least one finding whose ``rule`` is the directory's id; every entry in
@@ -39,17 +39,15 @@ from pathlib import Path
 
 import pytest
 
-from headgate_verify.checks import CHECKS
 from headgate_verify.config import Config
-from headgate_verify.engine import verify
-from headgate_verify.rules import RESERVED_RULES, load_rules
+from headgate_verify.engine import all_rules, verify
 
 _RULES_DIR = Path(__file__).parent / "rules"
 _CONFIG_PREFIX = "# headgate-verify-config:"
 
 
 def _known_rules() -> set[str]:
-    return {rule.id for rule in load_rules()} | {name for name, _ in CHECKS} | set(RESERVED_RULES)
+    return {rule.id for rule in all_rules()}
 
 
 def _cases() -> list[tuple[str, str, Path]]:

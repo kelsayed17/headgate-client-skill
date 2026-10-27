@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from headgate_verify import cli
-from headgate_verify.checks import FIXES, models
+from headgate_verify.checks import models
 from headgate_verify.engine import verify
 from headgate_verify.finding import Finding
 from headgate_verify.package import NoPackageError, find_packages
@@ -120,8 +120,9 @@ def test_warning_severity_reported(tmp_path: Path, capsys: pytest.CaptureFixture
 
 
 def test_check_finding_carries_its_fix(tmp_path: Path) -> None:
-    """A Python check's findings carry the fix sentence registered for it in ``FIXES``."""
+    """A Python check's findings carry the fix sentence its ``RULE`` registers."""
     _touch(tmp_path / "lda" / "client.py")
     (tmp_path / "lda" / "models.py").write_text("class LdaFiling:\n    pass\n")
-    (finding,) = [finding for finding in verify([tmp_path]) if finding.rule == models.RULE]
-    assert finding.fix == models.FIX == FIXES[models.RULE]
+    (finding,) = [finding for finding in verify([tmp_path]) if finding.rule == models.RULE.id]
+    assert finding.fix == models.RULE.fix
+    assert finding.fix

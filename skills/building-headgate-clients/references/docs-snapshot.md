@@ -35,8 +35,8 @@ Both worked examples carry one: [lda](../../../examples/msgspec/lda/docs_paths.j
   name check strips holes and matches the client's paths by suffix, so neither the hole names nor the prefix need to
   agree with the client's.
 
-No other key is allowed. `headgate_verify.naming.load_snapshot` validates the file, and `headgate-verify` reports a
-snapshot that breaks the schema.
+No other key is allowed. `headgate_verify.snapshot.load_snapshot` validates the file, and `headgate-verify` reports
+a snapshot that breaks the schema.
 
 ## Where to find the surface, in order
 

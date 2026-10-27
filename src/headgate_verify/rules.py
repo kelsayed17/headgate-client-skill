@@ -5,8 +5,8 @@
 
 A rule file keeps ast-grep's own keys, so it reads like any ast-grep rule: ``id``, ``message``, ``severity``
 (``error`` or ``warning``), ``files`` (globs relative to the package root, default every module), ``rule``,
-``constraints``, ``utils`` and ``transform``, plus the informational ``language`` (``python`` only) and ``note``.
-The last four of ast-grep's keys go to ast-grep-py unchanged.
+``constraints``, ``utils`` and ``transform``, plus the informational ``language`` (``python`` only) and ``note``, which
+becomes the rule's ``fix``. The last four of ast-grep's keys go to ast-grep-py unchanged.
 
 One key is this tool's own: ``skip-packages-in: <field>`` names a ``Config`` field holding package names (the name of
 the directory that holds ``client.py``); the rule does not run in a package so named.
@@ -17,69 +17,73 @@ an alternation of the field's values, each escaped, so ``'^({{config.filler_word
 an empty field writes an alternation that matches nothing.
 """
 
-import ast
 import functools
 import re
 from dataclasses import dataclass, field, fields
 from importlib.resources import files as resource_files
-from pathlib import Path, PurePath
-from typing import TYPE_CHECKING
+from pathlib import PurePath
+from typing import TYPE_CHECKING, Any
 
 import yaml
-from ast_grep_py import Config as SgConfig
-from ast_grep_py import SgRoot
 
 from headgate_verify.config import Config
-from headgate_verify.finding import Finding, Severity
+from headgate_verify.exemptions import BAD_EXEMPTION
+from headgate_verify.finding import Rule, Severity
+from headgate_verify.parsing import LANGUAGE, PARSE_ERROR
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
+    from ast_grep_py import Config as SgConfig
+
+    from headgate_verify.finding import Finding
     from headgate_verify.package import Package
+    from headgate_verify.parsing import Modules
 
-PARSE_ERROR = "parse-error"
-"""The reserved id of the finding for a module that does not parse."""
-BAD_EXEMPTION = "bad-exemption"
-"""The reserved id of the finding for a malformed, unknown or unused allow comment."""
-RESERVED_RULES = (BAD_EXEMPTION, PARSE_ERROR)
-"""Rule ids the engine itself reports; no rule file or check may take one."""
-RESERVED_FIXES: dict[str, str] = {
-    BAD_EXEMPTION: "Give the allow comment a reason after `--` and name a rule it covers on that line or block, "
-    "or delete it.",
-    PARSE_ERROR: "Make the module a readable UTF-8 file that Python's own parser accepts; no other rule reads it "
-    "until then.",
-}
-"""How to fix each finding the engine itself reports."""
+RESERVED: tuple[Rule, ...] = (BAD_EXEMPTION, PARSE_ERROR)
+"""The rules the engine itself reports; no rule file or check may take one's id."""
 
-_LANGUAGE = "python"
 _DEFAULT_FILES = ("**/*.py",)
 _SEVERITIES: dict[str, Severity] = {"error": "error", "warning": "warning"}
 _REQUIRED_KEYS = frozenset({"id", "message", "severity", "rule"})
-_KNOWN_KEYS = _REQUIRED_KEYS | {"language", "note", "files", "constraints", "utils", "transform", "skip-packages-in"}
+_SG_KEYS = ("rule", "constraints", "utils", "transform")
+"""The keys handed to ast-grep-py as the rule's config, when present."""
+_KNOWN_KEYS = _REQUIRED_KEYS | {*_SG_KEYS, "language", "note", "files", "skip-packages-in"}
 _PLACEHOLDER = re.compile(r"\{\{config\.(\w+)\}\}")
 _MATCH_NOTHING = r"[^\s\S]"
+_CONFIG_FIELDS = frozenset(config_field.name for config_field in fields(Config))
 
 
-@dataclass(frozen=True)
-class YamlRule:
-    """One ast-grep rule loaded from a YAML file."""
+@dataclass(frozen=True, kw_only=True)
+class YamlRule(Rule):
+    """One ast-grep rule loaded from a YAML file; its ``fix`` is the YAML's ``note``, whitespace folded to spaces."""
 
-    id: str
     message: str
-    severity: Severity
-    files: tuple[str, ...]
+    files: tuple[str, ...] = _DEFAULT_FILES
     config: SgConfig
     """The YAML's ``rule``/``constraints``/``utils``/``transform``, with placeholders filled from ``Config()``."""
     source: str = field(default="", repr=False, compare=False)
     """The YAML text, re-read with each run's ``Config`` when it holds a ``{{config.<field>}}`` placeholder."""
     skip_packages_in: str | None = None
     """The ``Config`` field naming the packages this rule does not run in."""
-    note: str = ""
-    """How to fix a finding: the YAML's ``note``, its whitespace folded to single spaces; empty when it has none."""
+
+    @property
+    def config_fields(self) -> tuple[str, ...]:
+        """Return the ``Config`` fields the rule reads, sorted: its placeholders and its ``skip-packages-in`` field."""
+        names = {str(name) for name in _PLACEHOLDER.findall(self.source)}
+        if self.skip_packages_in is not None:
+            names.add(self.skip_packages_in)
+        return tuple(sorted(names))
 
     def applies_to(self, relative: PurePath) -> bool:
         """Return whether a module at ``relative`` to the package root matches one of the rule's ``files`` globs."""
         return any(relative.full_match(glob) for glob in self.files)
+
+    def sg_config(self, config: Config) -> SgConfig:
+        """Return the ast-grep config to run under ``config``: refilled only when a placeholder reads it."""
+        if config == Config() or not _PLACEHOLDER.search(self.source):
+            return self.config
+        return _sg_config(_load(self.source, config, self.id))
 
 
 def _alternation(values: Iterable[str]) -> str:
@@ -87,71 +91,64 @@ def _alternation(values: Iterable[str]) -> str:
     return "|".join(escaped) if escaped else _MATCH_NOTHING
 
 
-def _fill(text: str, config: Config) -> str:
+def _load(text: str, config: Config, rule_id: str) -> dict[str, Any]:
+    """Return the YAML mapping in ``text``, each ``{{config.<field>}}`` placeholder filled from ``config``."""
+
     def replace(match: re.Match[str]) -> str:
         return _alternation(getattr(config, match.group(1))).replace("'", "''")
 
-    return _PLACEHOLDER.sub(replace, text)
+    data = yaml.safe_load(_PLACEHOLDER.sub(replace, text))
+    if not isinstance(data, dict):
+        raise _invalid(rule_id, "the YAML must be a mapping")
+    return data
 
 
-def _sg_config(text: str, config: Config) -> SgConfig:
-    data = yaml.safe_load(_fill(text, config))
+def _sg_config(data: dict[str, Any]) -> SgConfig:
     sg_config: SgConfig = {"rule": data["rule"]}
-    if "constraints" in data:
-        sg_config["constraints"] = data["constraints"]
-    if "utils" in data:
-        sg_config["utils"] = data["utils"]
-    if "transform" in data:
-        sg_config["transform"] = data["transform"]
+    for key in _SG_KEYS[1:]:
+        if key in data:
+            sg_config[key] = data[key]
     return sg_config
+
+
+def _invalid(rule_id: str, problem: str) -> ValueError:
+    return ValueError(f"rule {rule_id}: {problem}")
 
 
 def rule_from_yaml(text: str, rule_id: str) -> YamlRule:
     """Build the rule in ``text``, whose ``id:`` must equal ``rule_id``; raise ``ValueError`` naming what is wrong."""
-    config_fields = {config_field.name for config_field in fields(Config)}
-    unknown_fields = sorted(set(_PLACEHOLDER.findall(text)) - config_fields)
+    unknown_fields = sorted(set(_PLACEHOLDER.findall(text)) - _CONFIG_FIELDS)
     if unknown_fields:
-        msg = f"rule {rule_id}: placeholder names no Config field: {unknown_fields}"
-        raise ValueError(msg)
-    data = yaml.safe_load(_fill(text, Config()))
-    if not isinstance(data, dict):
-        msg = f"rule {rule_id}: the YAML must be a mapping"
-        raise ValueError(msg)  # noqa: TRY004 - a malformed rule file is a value error, like every other refusal here
+        raise _invalid(rule_id, f"placeholder names no Config field: {unknown_fields}")
+    data = _load(text, Config(), rule_id)
     missing = sorted(_REQUIRED_KEYS - set(data))
     unknown = sorted(set(data) - _KNOWN_KEYS)
     if missing or unknown:
-        msg = f"rule {rule_id}: missing keys {missing}, unknown keys {unknown}"
-        raise ValueError(msg)
+        raise _invalid(rule_id, f"missing keys {missing}, unknown keys {unknown}")
     if data["id"] != rule_id:
-        msg = f"rule {rule_id}: id {data['id']!r} differs from the file name"
-        raise ValueError(msg)
-    if rule_id in RESERVED_RULES:
-        msg = f"rule {rule_id}: the id is reserved"
-        raise ValueError(msg)
-    if data.get("language", _LANGUAGE) != _LANGUAGE:
-        msg = f"rule {rule_id}: language must be {_LANGUAGE}"
-        raise ValueError(msg)
+        raise _invalid(rule_id, f"id {data['id']!r} differs from the file name")
+    if rule_id in {rule.id for rule in RESERVED}:
+        raise _invalid(rule_id, "the id is reserved")
+    if data.get("language", LANGUAGE) != LANGUAGE:
+        raise _invalid(rule_id, f"language must be {LANGUAGE}")
     severity = _SEVERITIES.get(data["severity"])
     if severity is None:
-        msg = f"rule {rule_id}: severity must be one of {sorted(_SEVERITIES)}, not {data['severity']!r}"
-        raise ValueError(msg)
+        raise _invalid(rule_id, f"severity must be one of {sorted(_SEVERITIES)}, not {data['severity']!r}")
     globs = data.get("files", _DEFAULT_FILES)
     if not isinstance(globs, list | tuple) or not all(isinstance(glob, str) for glob in globs):
-        msg = f"rule {rule_id}: files must be a list of globs"
-        raise ValueError(msg)
+        raise _invalid(rule_id, "files must be a list of globs")
     skip_packages_in = data.get("skip-packages-in")
-    if skip_packages_in is not None and skip_packages_in not in config_fields:
-        msg = f"rule {rule_id}: skip-packages-in names no Config field: {skip_packages_in!r}"
-        raise ValueError(msg)
+    if skip_packages_in is not None and skip_packages_in not in _CONFIG_FIELDS:
+        raise _invalid(rule_id, f"skip-packages-in names no Config field: {skip_packages_in!r}")
     return YamlRule(
         id=rule_id,
-        message=str(data["message"]),
         severity=severity,
+        fix=" ".join(str(data.get("note") or "").split()),
+        message=str(data["message"]),
         files=tuple(globs),
-        config=_sg_config(text, Config()),
+        config=_sg_config(data),
         source=text,
         skip_packages_in=skip_packages_in,
-        note=" ".join(str(data.get("note") or "").split()),
     )
 
 
@@ -165,86 +162,18 @@ def load_rules() -> tuple[YamlRule, ...]:
     )
 
 
-@dataclass(frozen=True)
-class _Parsed:
-    roots: dict[Path, SgRoot]
-    errors: tuple[Finding, ...]
-
-
-def _parse_error(path: Path, line: int, detail: str) -> Finding:
-    return Finding(PARSE_ERROR, path, line, f"the module does not parse ({detail}); no other rule read it", "error")
-
-
-@functools.cache
-def _parsed(pkg: Package) -> _Parsed:
-    roots: dict[Path, SgRoot] = {}
-    errors: list[Finding] = []
-    for path in pkg.modules:
-        try:
-            text = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError as error:
-            errors.append(_parse_error(path, 1, f"not UTF-8: {error.reason}"))
-            continue
-        except OSError as error:
-            errors.append(_parse_error(path, 1, f"the file cannot be read: {error.strerror or error}"))
-            continue
-        # Python's own parser first: tree-sitter repairs some code Python refuses with a MISSING node, which
-        # ast-grep-py cannot see. ast.parse only builds a tree; it neither imports nor executes the module.
-        try:
-            ast.parse(text, filename=str(path))
-        except SyntaxError as error:
-            errors.append(_parse_error(path, error.lineno or 1, f"syntax error: {error.msg}"))
-            continue
-        except ValueError as error:
-            errors.append(_parse_error(path, 1, str(error)))
-            continue
-        except (MemoryError, RecursionError) as error:
-            # Too deep or too large for Python's parser: a finding, so one module cannot crash the run.
-            errors.append(_parse_error(path, 1, f"{type(error).__name__}: too deep or too large for Python's parser"))
-            continue
-        root = SgRoot(text, _LANGUAGE)
-        broken = root.root().find(kind="ERROR")
-        if broken is None:
-            roots[path] = root
-        else:
-            errors.append(_parse_error(path, broken.range().start.line + 1, "tree-sitter syntax error"))
-    return _Parsed(roots, tuple(errors))
-
-
-def parse(pkg: Package) -> dict[Path, SgRoot]:
-    """Return each module of ``pkg`` that parses, with its tree; parsed once per run (see ``clear_cache``)."""
-    return _parsed(pkg).roots
-
-
-def parse_errors(pkg: Package) -> list[Finding]:
-    """Return a ``parse-error`` finding for each module of ``pkg`` that does not parse."""
-    return list(_parsed(pkg).errors)
-
-
-def clear_cache() -> None:
-    """Forget every parsed package, so the next run re-reads the files."""
-    _parsed.cache_clear()
-
-
-def _effective_config(rule: YamlRule, config: Config) -> SgConfig:
-    if config == Config() or not _PLACEHOLDER.search(rule.source):
-        return rule.config
-    return _sg_config(rule.source, config)
-
-
-def run_rules(pkg: Package, rules: Sequence[YamlRule], config: Config) -> list[Finding]:
-    """Return one finding per match of each rule in each module of ``pkg`` its ``files`` globs name."""
+def run_rules(pkg: Package, modules: Modules, rules: Sequence[YamlRule], config: Config) -> list[Finding]:
+    """Return one finding per match of each rule in each of the parsed ``modules`` of ``pkg`` its globs name."""
     findings: list[Finding] = []
-    modules = parse(pkg)
     for rule in rules:
         if rule.skip_packages_in is not None and pkg.root.name in getattr(config, rule.skip_packages_in):
             continue
-        sg_config = _effective_config(rule, config)
+        sg_config = rule.sg_config(config)
         for path, root in modules.items():
             if not rule.applies_to(PurePath(path.relative_to(pkg.root))):
                 continue
             findings.extend(
-                Finding(rule.id, path, match.range().start.line + 1, rule.message, rule.severity)
+                rule.finding(path, match.range().start.line + 1, rule.message)
                 for match in root.root().find_all(sg_config)
             )
     return findings

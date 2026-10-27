@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from headgate_verify.checks import CHECKS, WARNING_CHECKS
+from headgate_verify.checks import CHECKS
 from headgate_verify.engine import verify
 
 if TYPE_CHECKING:
@@ -134,10 +134,9 @@ def test_rule_docs_list_every_rule() -> None:
         assert f"| `{row.id}` | {row.fix.replace('|', chr(92) + '|')} |" in text
 
 
-@pytest.mark.parametrize("rule_id", [name for name, _ in CHECKS])
-def test_check_severity_is_documented(rule_id: str, tmp_path: Path) -> None:
+@pytest.mark.parametrize(("rule_id", "expected"), [(check.rule.id, check.rule.severity) for check in CHECKS])
+def test_check_severity_is_documented(rule_id: str, expected: str, tmp_path: Path) -> None:
     """A check's documented severity is the one its findings carry on its ``fail`` fixtures."""
-    expected = "warning" if rule_id in WARNING_CHECKS else "error"
     severities: set[str] = set()
     for entry in sorted((ROOT / "tests" / "rules" / rule_id / "fail").iterdir()):
         target = tmp_path / entry.stem / "pkg"  # the name the fixture harness gives a package

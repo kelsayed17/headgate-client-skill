@@ -10,16 +10,19 @@ from typing import TYPE_CHECKING
 import pytest
 from ast_grep_py import SgRoot
 
-from headgate_verify import rules as rules_module
-from headgate_verify.checks import CHECKS, FIXES
+from headgate_verify import parsing
+from headgate_verify.checks import CHECKS
 from headgate_verify.config import Config
 from headgate_verify.engine import verify
 from headgate_verify.exemptions import apply_exemptions
 from headgate_verify.package import find_packages
-from headgate_verify.rules import load_rules, parse, rule_from_yaml, run_rules
+from headgate_verify.parsing import parse_package
+from headgate_verify.rules import load_rules, rule_from_yaml, run_rules
 
 if TYPE_CHECKING:
     from headgate_verify.finding import Finding
+    from headgate_verify.package import Package
+    from headgate_verify.rules import YamlRule
 
 _FIXTURES = Path(__file__).parent / "rules"
 
@@ -38,6 +41,11 @@ def _write(root: Path, name: str, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
     return path
+
+
+def _run(pkg: Package, rule: YamlRule, config: Config) -> list[Finding]:
+    """Return ``rule``'s findings over the modules of ``pkg`` that parse."""
+    return run_rules(pkg, parse_package(pkg).modules, [rule], config)
 
 
 def _verify(paths: list[Path]) -> list[Finding]:
@@ -88,9 +96,9 @@ def test_config_placeholder_writes_an_alternation(tmp_path: Path) -> None:
     _write(tmp_path, "client.py", "api = 1\nv2 = 2\nkeep = 3\na_b = 4\n")
     (pkg,) = find_packages([tmp_path])
     rule = rule_from_yaml(_FILLER_RULE, "filler-name")
-    found = run_rules(pkg, [rule], Config(filler_words=frozenset({"api", "v2"})))
+    found = _run(pkg, rule, Config(filler_words=frozenset({"api", "v2"})))
     assert [(finding.line, finding.severity) for finding in found] == [(1, "warning"), (2, "warning")]
-    assert run_rules(pkg, [rule], Config(filler_words=frozenset())) == []
+    assert _run(pkg, rule, Config(filler_words=frozenset())) == []
 
 
 def test_files_globs_scope_a_rule(tmp_path: Path) -> None:
@@ -99,7 +107,7 @@ def test_files_globs_scope_a_rule(tmp_path: Path) -> None:
     _write(tmp_path, "models.py", "api = 1\n")
     (pkg,) = find_packages([tmp_path])
     rule = rule_from_yaml(_FILLER_RULE.replace("rule:", "files: [models.py]\nrule:"), "filler-name")
-    found = run_rules(pkg, [rule], Config())
+    found = _run(pkg, rule, Config())
     assert [finding.path.name for finding in found] == ["models.py"]
 
 
@@ -112,7 +120,7 @@ def test_skip_packages_in_exempts_a_package_by_name(tmp_path: Path) -> None:
         _FILLER_RULE.replace("rule:", "skip-packages-in: browser_user_agent_packages\nrule:"), "filler-name"
     )
     config = Config(browser_user_agent_packages=frozenset({"cboe"}))
-    found = [finding for pkg in pkgs for finding in run_rules(pkg, [rule], config)]
+    found = [finding for pkg in pkgs for finding in _run(pkg, rule, config)]
     assert [finding.path.parent.name for finding in found] == ["fred"]
     with pytest.raises(ValueError, match="no_such_field"):
         rule_from_yaml(_FILLER_RULE.replace("rule:", "skip-packages-in: no_such_field\nrule:"), "filler-name")
@@ -123,7 +131,7 @@ def test_unparseable_file_is_a_finding(tmp_path: Path) -> None:
     client = _write(tmp_path, "client.py", "def (:\n")
     _write(tmp_path, "models.py", "x = 1\n")
     (pkg,) = find_packages([tmp_path])
-    assert list(parse(pkg)) == [tmp_path / "models.py"]
+    assert list(parse_package(pkg).modules) == [tmp_path / "models.py"]
     findings = _verify([tmp_path])
     assert [(finding.rule, finding.path, finding.line, finding.severity) for finding in findings] == [
         ("parse-error", client, 1, "error"),
@@ -150,10 +158,10 @@ def test_allow_on_the_enclosing_def_line(tmp_path: Path) -> None:
     )
     (pkg,) = find_packages([tmp_path])
     rule = rule_from_yaml(_FILLER_RULE, "filler-name")
-    raw = run_rules(pkg, [rule], Config(filler_words=frozenset({"api"})))
+    raw = _run(pkg, rule, Config(filler_words=frozenset({"api"})))
     assert [finding.line for finding in raw] == [9]
-    assert apply_exemptions(raw, parse(pkg), frozenset({"filler-name"})) == []
-    unknown = apply_exemptions(raw, parse(pkg), frozenset())
+    assert apply_exemptions(raw, parse_package(pkg).modules, frozenset({"filler-name"})) == []
+    unknown = apply_exemptions(raw, parse_package(pkg).modules, frozenset())
     assert [(finding.rule, finding.line) for finding in unknown] == [("bad-exemption", 8), ("filler-name", 9)]
 
 
@@ -200,7 +208,7 @@ def test_parser_exhaustion_is_a_parse_error(
     def refuse(*_args: object, **_kwargs: object) -> None:
         raise error
 
-    monkeypatch.setattr(rules_module.ast, "parse", refuse)
+    monkeypatch.setattr(parsing.ast, "parse", refuse)
     findings = _verify([tmp_path])
     assert [(finding.rule, finding.path) for finding in findings] == [("parse-error", client)]
     assert error.__name__ in findings[0].message
@@ -210,21 +218,20 @@ def test_yaml_finding_carries_the_rule_note_as_its_fix(tmp_path: Path) -> None:
     """A YAML rule's ``note`` reaches its findings as ``fix``."""
     _write(tmp_path, "client.py", '"""No client class."""\n')
     (finding,) = _verify([tmp_path])
-    note = {rule.id: rule.note for rule in load_rules()}["client-module-has-a-client"]
+    note = {rule.id: rule.fix for rule in load_rules()}["client-module-has-a-client"]
     assert finding.rule == "client-module-has-a-client"
     assert note
     assert finding.fix == note
 
 
 def test_note_is_loaded_and_optional() -> None:
-    """``note`` is read onto the rule, folded to one line; a rule without one has an empty note."""
-    assert rule_from_yaml(_FILLER_RULE, "filler-name").note == ""
+    """``note`` is read onto the rule as its fix, folded to one line; a rule without one has an empty fix."""
+    assert rule_from_yaml(_FILLER_RULE, "filler-name").fix == ""
     noted = rule_from_yaml(_FILLER_RULE + "note: >-\n  Rename it\n  to a word.\n", "filler-name")
-    assert noted.note == "Rename it to a word."
+    assert noted.fix == "Rename it to a word."
 
 
 def test_every_shipped_rule_and_check_has_a_fix() -> None:
     """Every YAML rule has a note and every Python check a fix sentence."""
-    assert [rule.id for rule in load_rules() if not rule.note.strip()] == []
-    assert [name for name, _ in CHECKS if not FIXES.get(name, "").strip()] == []
-    assert set(FIXES) == {name for name, _ in CHECKS}
+    assert [rule.id for rule in load_rules() if not rule.fix.strip()] == []
+    assert [check.rule.id for check in CHECKS if not check.rule.fix.strip()] == []

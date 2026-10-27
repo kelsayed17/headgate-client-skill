@@ -1,13 +1,7 @@
 # Copyright (c) 2026 Khaled Elsayed
 # SPDX-License-Identifier: MIT
 
-"""Two warnings, for what a pattern can find but only a reader can judge. A warning never fails the run (exit 0).
-
-``client-except-needs-review``: every ``except`` clause of every module of the package is reported, at the clause's
-line, once per clause. A client's errors are ``headgate.errors`` types the caller handles; a handler that turns one
-into a return value, or into another exception type, changes what the caller sees. The finding asks the agent to
-confirm the handler re-raises a ``headgate.errors`` type, or that the swallowed error is a documented answer, and to
-record which with an allow comment carrying the reason. ``try``/``finally`` with no handler is not reported.
+"""A warning, for what a pattern can find but only a reader can judge. A warning never fails the run (exit 0).
 
 ``client-cache-with-bearer-auth``: a class (of any module) that builds an ``HttpCache`` whose partition is not shown to
 be per credential, and also builds an auth that sets an ``Authorization: Bearer`` header, is reported once, at the
@@ -39,35 +33,31 @@ assignment, which may serve several classes.
 DISCLOSED: only the class body and its own module's assignments are read. A cache received as a parameter, imported
 from another module, or built in a function (``policy=make_policy()``), or an auth built in a helper function
 (``auth=make_auth()``), is not seen, and a module-level name rebound or shadowed in the class is still resolved. An
-auth class that subclasses ``StaticHeaderAuth`` is not tracked. ``except`` clauses in a module the parser cannot
-read are not seen (the engine reports that module as ``parse-error``).
+auth class that subclasses ``StaticHeaderAuth`` is not tracked.
 """
 
 import re
 from typing import TYPE_CHECKING
 
-from headgate_verify.finding import Finding
+from headgate_verify.finding import Rule
+from headgate_verify.syntax import assignments, bare_name, bases, classes, derived, line
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ast_grep_py import SgNode, SgRoot
+    from ast_grep_py import SgNode
 
     from headgate_verify.config import Config
+    from headgate_verify.finding import Finding
     from headgate_verify.package import Package
+    from headgate_verify.parsing import Modules
 
-EXCEPT_RULE = "client-except-needs-review"
-CACHE_RULE = "client-cache-with-bearer-auth"
-EXCEPT_FIX = (
-    "Make the handler re-raise a `headgate.errors` type, or confirm the swallowed error is a documented answer, and "
-    "record which with an allow comment carrying the reason."
+RULE = Rule(
+    id="client-cache-with-bearer-auth",
+    severity="warning",
+    fix="Build the HttpCache on the default `Partition.CREDENTIAL`; keep `Partition.SHARED` only for public data, with "
+    "an allow comment saying why.",
 )
-"""How to resolve a ``client-except-needs-review`` warning."""
-CACHE_FIX = (
-    "Build the HttpCache on the default `Partition.CREDENTIAL`; keep `Partition.SHARED` only for public data, with an "
-    "allow comment saying why."
-)
-"""How to resolve a ``client-cache-with-bearer-auth`` warning."""
 _BEARER_SEEDS = frozenset({"BearerAuth", "CachedTokenAuth"})
 _STATIC_HEADER_AUTH = "StaticHeaderAuth"
 _FOLLOW = 3
@@ -76,58 +66,21 @@ _BEARER_VALUE = re.compile(r"^[rRbBuUfFtT]*(?:'''|\"\"\"|'|\")\s*bearer\b", re.I
 _AUTHORIZATION_KEY = re.compile(r"^[rRbBuUfFtT]*(?:'''|\"\"\"|'|\")authorization(?:'''|\"\"\"|'|\")$", re.IGNORECASE)
 
 
-def _bare_name(node: SgNode | None) -> str | None:
-    """Return the last name of ``Name``, ``a.Name`` or ``Name[...]``, or None for any other node."""
-    if node is None:
-        return None
-    match node.kind():
-        case "identifier":
-            return node.text()
-        case "attribute":
-            return _bare_name(node.field("attribute"))
-        case "subscript":
-            return _bare_name(node.field("value"))
-        case _:
-            return None
-
-
-def _bases(cls: SgNode) -> set[str]:
-    arguments = cls.field("superclasses")
-    if arguments is None:
-        return set()
-    names = {_bare_name(child) for child in arguments.children() if child.kind() != "keyword_argument"}
-    return {name for name in names if name is not None}
-
-
 def _names_authorization(cls: SgNode) -> bool:
     """Return False when the class assigns ``token_headers`` to something that does not name ``Authorization``."""
     body = cls.field("body")
-    for statement in body.children() if body is not None else []:
-        for assignment in statement.children():
-            left = assignment.field("left") if assignment.kind() == "assignment" else None
-            right = assignment.field("right")
-            if left is not None and left.text() == "token_headers" and right is not None:
-                return "authorization" in right.text().lower()
-    return True
+    headers = None if body is None else assignments(body).get("token_headers")
+    return headers is None or "authorization" in headers.text().lower()
 
 
-def _bearer_classes(modules: dict[Path, SgRoot]) -> set[str]:
+def _bearer_classes(modules: Modules) -> set[str]:
     """Return the names of ``BearerAuth``, ``CachedTokenAuth`` and every class of the package deriving from them."""
-    classes = [
-        (name.text(), _bases(node), node)
-        for root in modules.values()
-        for node in root.root().find_all(kind="class_definition")
-        if (name := node.field("name")) is not None
+    hierarchy = [
+        (name, {base for node in bases(cls) if (base := bare_name(node)) is not None})
+        for _, cls, name in classes(modules)
+        if _names_authorization(cls)
     ]
-    known = set(_BEARER_SEEDS)
-    grown = True
-    while grown:
-        grown = False
-        for name, bases, node in classes:
-            if name not in known and bases & known and _names_authorization(node):
-                known.add(name)
-                grown = True
-    return known
+    return derived(set(_BEARER_SEEDS), hierarchy)
 
 
 def _dict_sets_bearer(node: SgNode) -> bool:
@@ -140,36 +93,28 @@ def _dict_sets_bearer(node: SgNode) -> bool:
     )
 
 
-def _bearer_auth(call: SgNode, bearer: set[str]) -> str | None:
-    """Return the class name ``call`` constructs when it is a bearer auth, else None."""
-    name = _bare_name(call.field("function"))
-    if name in bearer:
-        return name
-    if name == _STATIC_HEADER_AUTH:
-        arguments = call.field("arguments")
-        for argument in arguments.children() if arguments is not None else []:
-            if argument.kind() == "keyword_argument":
-                key, value = argument.field("name"), argument.field("value")
-                headers = value if key is not None and key.text() == "headers" else None
-            else:
-                headers = argument if argument.is_named() and argument.kind() != "comment" else None
-            if headers is not None and headers.kind() == "dictionary" and _dict_sets_bearer(headers):
-                return name
-            if headers is not None:
-                break
+def _headers_argument(call: SgNode) -> SgNode | None:
+    """Return the headers a ``StaticHeaderAuth(...)`` call passes: its first argument, else its ``headers=``."""
+    argument_list = call.field("arguments")
+    for argument in [] if argument_list is None else argument_list.children():
+        if argument.kind() == "keyword_argument":
+            key = argument.field("name")
+            if key is not None and key.text() == "headers":
+                return argument.field("value")
+        elif argument.is_named() and argument.kind() != "comment":
+            return argument
     return None
 
 
-def _partition_risk(call: SgNode) -> str | None:
-    """Return how an ``HttpCache(...)`` call's partition is not shown to be per credential, or None when it is."""
-    arguments = call.field("arguments")
-    for argument in arguments.children() if arguments is not None else []:
-        if argument.kind() in {"dictionary_splat", "list_splat"}:
-            return _UNREADABLE
-        key, value = argument.field("name"), argument.field("value")
-        if argument.kind() == "keyword_argument" and key is not None and key.text() == "partition":
-            member = _partition_member(value)
-            return None if member == "CREDENTIAL" else "Partition.SHARED" if member == "SHARED" else _UNREADABLE
+def _bearer_auth(call: SgNode, bearer: set[str]) -> str | None:
+    """Return the class name ``call`` constructs when it is a bearer auth, else None."""
+    name = bare_name(call.field("function"))
+    if name in bearer:
+        return name
+    if name == _STATIC_HEADER_AUTH:
+        headers = _headers_argument(call)
+        if headers is not None and headers.kind() == "dictionary" and _dict_sets_bearer(headers):
+            return name
     return None
 
 
@@ -180,30 +125,26 @@ def _partition_member(node: SgNode | None) -> str | None:
     member, owner = node.field("attribute"), node.field("object")
     if member is None or owner is None:
         return None
-    owner_name = _bare_name(owner)
-    return member.text() if owner_name == "Partition" else None
+    return member.text() if bare_name(owner) == "Partition" else None
 
 
-def _module_values(root: SgRoot) -> dict[str, SgNode]:
-    """Return ``name -> value`` for each ``name = value`` statement directly in the module."""
-    values: dict[str, SgNode] = {}
-    for statement in root.root().children():
-        for assignment in statement.children() if statement.kind() == "expression_statement" else []:
-            left, right = assignment.field("left"), assignment.field("right")
-            if (
-                assignment.kind() == "assignment"
-                and left is not None
-                and right is not None
-                and left.kind() == "identifier"
-            ):
-                values[left.text()] = right
-    return values
+def _partition_risk(call: SgNode) -> str | None:
+    """Return how an ``HttpCache(...)`` call's partition is not shown to be per credential, or None when it is."""
+    argument_list = call.field("arguments")
+    for argument in [] if argument_list is None else argument_list.children():
+        if argument.kind() in {"dictionary_splat", "list_splat"}:
+            return _UNREADABLE
+        key = argument.field("name")
+        if argument.kind() == "keyword_argument" and key is not None and key.text() == "partition":
+            member = _partition_member(argument.field("value"))
+            return None if member == "CREDENTIAL" else "Partition.SHARED" if member == "SHARED" else _UNREADABLE
+    return None
 
 
 def _caches_behind(value: SgNode, values: dict[str, SgNode], depth: int) -> list[SgNode]:
     """Return the ``HttpCache(...)`` calls ``value`` is or is built from, following module-level names."""
     calls = [value, *value.find_all(kind="call")] if value.kind() == "call" else []
-    found = [call for call in calls if _bare_name(call.field("function")) == "HttpCache"]
+    found = [call for call in calls if bare_name(call.field("function")) == "HttpCache"]
     if depth:
         names = [value] if value.kind() == "identifier" else value.find_all(kind="identifier")
         for name in names:
@@ -221,21 +162,21 @@ def _cache_risk(cls: SgNode, values: dict[str, SgNode]) -> tuple[int, str] | Non
     ``CACHE = HttpCache(...)``), reported at the class's use of the name.
     """
     risks = [
-        (call.range().start.line + 1, risk)
+        (line(call), risk)
         for call in cls.find_all(kind="call")
-        if _bare_name(call.field("function")) == "HttpCache" and (risk := _partition_risk(call)) is not None
+        if bare_name(call.field("function")) == "HttpCache" and (risk := _partition_risk(call)) is not None
     ]
     for use in cls.find_all(kind="identifier"):
         target = values.get(use.text())
         risks += [
-            (use.range().start.line + 1, risk)
+            (line(use), risk)
             for call in (_caches_behind(target, values, _FOLLOW) if target is not None else [])
             if (risk := _partition_risk(call)) is not None
         ]
     return min(risks) if risks else None
 
 
-def check_cache(pkg: Package, modules: dict[Path, SgRoot], config: Config) -> list[Finding]:
+def check(pkg: Package, modules: Modules, config: Config) -> list[Finding]:
     """Return a warning for each class that builds a bearer auth and a cache not shown to be per credential."""
     del config
     bearer = _bearer_classes(modules)
@@ -244,42 +185,21 @@ def check_cache(pkg: Package, modules: dict[Path, SgRoot], config: Config) -> li
         root = modules.get(path)
         if root is None:
             continue
-        values = _module_values(root)
-        for cls in root.root().find_all(kind="class_definition"):
-            name = cls.field("name")
+        values = assignments(root.root())
+        for _, cls, name in classes({path: root}):
             risk = _cache_risk(cls, values)
             auth = next(
                 (found for call in cls.find_all(kind="call") if (found := _bearer_auth(call, bearer)) is not None),
                 None,
             )
-            if name is None or risk is None or auth is None or (path, risk[0]) in findings:
+            if risk is None or auth is None or (path, risk[0]) in findings:
                 continue
-            line, how = risk
-            findings[path, line] = Finding(
-                CACHE_RULE,
+            at, how = risk
+            findings[path, at] = RULE.finding(
                 path,
-                line,
-                f"the client class {name.text()} builds the bearer auth {auth} and caches with {how}; Partition.SHARED "
+                at,
+                f"the client class {name} builds the bearer auth {auth} and caches with {how}; Partition.SHARED "
                 "shares cached entries across credentials, so use the default Partition.CREDENTIAL, or allow this "
                 "with the reason every response is public",
-                "warning",
             )
     return list(findings.values())
-
-
-def check_except(pkg: Package, modules: dict[Path, SgRoot], config: Config) -> list[Finding]:
-    """Return a warning for each ``except`` clause in the package."""
-    del config
-    return [
-        Finding(
-            EXCEPT_RULE,
-            path,
-            clause.range().start.line + 1,
-            "this handler must re-raise a headgate.errors type, or the error must be a documented answer of the "
-            "provider; confirm which, and record the reason with an allow comment",
-            "warning",
-        )
-        for path in pkg.modules
-        if (root := modules.get(path)) is not None
-        for clause in root.root().find_all(kind="except_clause")
-    ]
