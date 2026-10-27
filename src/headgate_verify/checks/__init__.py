@@ -34,3 +34,6 @@ CHECKS: tuple[tuple[str, Check], ...] = (
     (warnings.CACHE_RULE, warnings.check_cache),
 )
 """Every Python check, as ``(rule id, check)``."""
+
+WARNING_CHECKS: frozenset[str] = frozenset({warnings.EXCEPT_RULE, warnings.CACHE_RULE})
+"""The checks whose findings are warnings, which never fail a run; every other check reports errors."""

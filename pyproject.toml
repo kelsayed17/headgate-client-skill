@@ -43,6 +43,8 @@ ignore = ["COM812", "D203", "D213"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]
 "examples/**/tests/**" = ["S101"]
+# A script is run by path, not imported: it belongs to no package.
+"scripts/**" = ["INP001"]
 
 [tool.ruff.lint.flake8-type-checking]
 # msgspec and pydantic read a model's annotations at run time: its field types are not type-checking-only imports.

@@ -12,10 +12,12 @@
 id: client-base-url-has-no-path
 language: python
 severity: error
-message: base_url carries a path — move the prefix into the method (declare it once as a module constant if it repeats)
+message: base_url carries a path — spell the prefix out in every method's path
 note: >-
-  A base URL is a host; a path prefix in it makes two prefixes on one host look like two hosts. Move the prefix into the
-  method, or declare it once as a module constant if it repeats.
+  A base URL is a host; a path prefix in it makes two prefixes on one host look like two hosts. Spell the prefix out in
+  each method's path literal (`"api/v1/filings/"`, `t"api/v1/filings/{uuid}/"`): a constant joined to a path is a
+  built path, which the client-paths rules refuse, and a t-string escapes a hole as one segment, so the prefix cannot
+  ride one.
 files:
   - 'client.py'
 utils:

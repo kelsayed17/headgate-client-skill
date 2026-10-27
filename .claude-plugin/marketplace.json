@@ -1,0 +1,13 @@
+{
+  "name": "headgate-client-skill",
+  "owner": {
+    "name": "Khaled Elsayed"
+  },
+  "description": "The building-headgate-clients skill, served from its own repository.",
+  "plugins": [
+    {
+      "name": "headgate-client-skill",
+      "source": "./"
+    }
+  ]
+}

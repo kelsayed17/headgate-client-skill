@@ -1,0 +1,13 @@
+{
+  "name": "headgate-client-skill",
+  "displayName": "headgate client skill",
+  "version": "0.1.0",
+  "description": "Teaches a coding agent to build HTTP API clients on headgate the same way every time: docs snapshot, one method per documented endpoint, recorded-fixture tests, and the headgate-verify gate.",
+  "author": {
+    "name": "Khaled Elsayed"
+  },
+  "homepage": "https://github.com/kelsayed17/headgate-client-skill",
+  "repository": "https://github.com/kelsayed17/headgate-client-skill",
+  "license": "MIT",
+  "keywords": ["headgate", "http-client", "api-client", "python", "skill"]
+}

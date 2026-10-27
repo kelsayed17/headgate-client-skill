@@ -5,7 +5,8 @@ method-name test (`check_names`) compares the client with it: a documented read 
 the docs do not list, and a misnamed read all fail the test. The snapshot is what makes "one method per documented
 endpoint, named after its path" checkable.
 
-> Draft, written while building the lda.gov example (`examples/msgspec/lda/`). The skill's procedure step 1 links here.
+Both worked examples carry one: [lda](../../../examples/msgspec/lda/docs_paths.json) (one OpenAPI document) and
+[Open-Meteo](../../../examples/pydantic/open_meteo/docs_paths.json) (two documents, two hosts).
 
 ## The file
 
@@ -94,6 +95,7 @@ each documents. The snapshot has no host field: which class serves which path is
 
 ## Then
 
-Cover every documented read: one method per `GET` in the snapshot, named as the name check derives it. The snapshot is
+Cover every documented read: one method per `GET` in the snapshot, named as the name check derives it
+([naming.md](naming.md)). The snapshot is
 a record of the docs, never trimmed to what the client happens to cover, so `test_method_names.py` passes only when
 every documented read has its method.
