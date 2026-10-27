@@ -390,6 +390,22 @@ def test_ambiguous_match_reported(tmp_path: Path) -> None:
     assert any("more than one" in p and "/v1/quotes" in p and "/v2/quotes" in p for p in problems), problems
 
 
+def test_exact_match_wins_over_suffix_matches(tmp_path: Path) -> None:
+    """A documented path equal to the client's is the match, even when longer documented paths end with it too."""
+    client = _client(tmp_path, _get("get_quotes", '"quotes"'))
+    snapshot = _snapshot(tmp_path, [("GET", "/quotes"), ("GET", "/v2/quotes")])
+    assert check_names(client, snapshot, overrides={"GET /v2/quotes": "get_v2_quotes"}) == [
+        "the documented read GET /v2/quotes has no method"
+    ]
+
+
+def test_documented_root_read_beside_other_reads_passes_with_its_override(tmp_path: Path) -> None:
+    """R29's override for a root ``GET /`` is enough: the root path matches the documented root, not every path."""
+    body = _get("get_root", '"/"') + _get("get_filings", '"v1/filings"')
+    snapshot = _snapshot(tmp_path, [("GET", "/"), ("GET", "/v1/filings")])
+    assert check_names(_client(tmp_path, body), snapshot, overrides={"GET /": "get_root"}) == []
+
+
 # Fix round 1: unreadable paths, R17 path overrides, R18 names from the documented path
 
 

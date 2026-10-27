@@ -17,7 +17,9 @@ dependency would buy nothing.
 The client is read statically with ast-grep-py and never imported (``client_endpoints``). A client path is relative
 to the client's base URL, so it matches a documented path when, after normalising both (strip ``/`` at either end,
 every ``{name}`` hole compares as ``{}``, the verb upper-cased), it equals the documented path or is a suffix of it on
-a segment boundary (ruling R16). A method matching more than one documented path is a problem, never a pick.
+a segment boundary (ruling R16). A documented path equal to the client's wins over the suffix matches, so a client
+path ``/`` matches the documented root, not every path. A method matching more than one documented path otherwise is
+a problem, never a pick.
 
 A public method that sends a request whose path is not a string, t-string or module-level constant (or a one-level
 delegate to one) is reported by name (``unreadable_methods``), never dropped in silence, and a documented read with no
@@ -450,7 +452,9 @@ def _compare(methods: Mapping[str, Endpoint], snapshot: DocsSnapshot, file: str)
     documented = [(endpoint, _segments(endpoint.path)) for endpoint in snapshot.endpoints]
     for name, endpoint in sorted(methods.items()):
         client = _segments(endpoint.path)
-        candidates = [doc for doc, segs in documented if doc.verb == endpoint.verb and _matches(client, segs)]
+        same_verb = [(doc, segs) for doc, segs in documented if doc.verb == endpoint.verb]
+        exact = [doc for doc, segs in same_verb if segs == client]
+        candidates = exact or [doc for doc, segs in same_verb if _matches(client, segs)]
         where = f"{name} calls {endpoint.verb} {endpoint.path}"
         if not candidates:
             found.problems.append(f"{where}, which is not in the snapshot {file}")

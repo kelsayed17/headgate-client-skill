@@ -43,7 +43,9 @@ examples' snapshots:
 the name comes from the **documented** path; otherwise from the client's own. A client path matches a documented path
 when, with `/` stripped at both ends and every `{hole}` compared as `{}` whatever its name, it equals the documented
 path or is a suffix of it on a segment boundary, with the same verb. So the docs and the client may name holes
-differently, and a prefix the docs carry does not change the name.
+differently, and a prefix the docs carry does not change the name. A documented path equal to the client's wins over
+the suffix matches: a client `"quotes"` beside documented `/quotes` and `/v2/quotes` matches `/quotes`, and a client
+`"/"` matches a documented root `GET /`, not every path.
 
 **Writes** keep a verb name (`create_order`, `cancel_order`) and are listed in `exempt_writes`, so the naming rule
 skips them. An API that reads by `POST` (a search endpoint) lists those methods in `post_reads`, and they are named
