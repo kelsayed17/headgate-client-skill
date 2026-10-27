@@ -30,11 +30,17 @@ and ``CachedTokenAuth`` all declare them. A warning on that default would force 
 cached bearer client. ``Partition.SHARED`` shares entries across credentials and is only for public data, so a bearer
 client that selects it needs a reason. A reviewed combination takes an allow comment with the reason.
 
-DISCLOSED: only the class body is read, and only an ``HttpCache(...)`` call in it. A cache received as a parameter or
-built in a module-level constant (``policy=POLICY``), or an auth built in a helper function (``auth=make_auth()``), is
-not seen, and an auth class that subclasses
-``StaticHeaderAuth`` is not tracked. ``except`` clauses in a module the parser cannot read are not seen (the engine
-reports that module as ``parse-error``).
+A cache is also found through module-level names: a name used in the class that its module assigns (``CACHE``,
+``POLICY = TransportPolicy(cache=CACHE)``) resolves, through up to three assignments, to the ``HttpCache(...)`` calls
+it is or is built from, and each is judged by its partition. That finding is reported on the class's use of the name
+(so an allow comment goes on that line, or on the enclosing ``def`` or ``class``), not on the module-level
+assignment, which may serve several classes.
+
+DISCLOSED: only the class body and its own module's assignments are read. A cache received as a parameter, imported
+from another module, or built in a function (``policy=make_policy()``), or an auth built in a helper function
+(``auth=make_auth()``), is not seen, and a module-level name rebound or shadowed in the class is still resolved. An
+auth class that subclasses ``StaticHeaderAuth`` is not tracked. ``except`` clauses in a module the parser cannot
+read are not seen (the engine reports that module as ``parse-error``).
 """
 
 import re
@@ -54,6 +60,7 @@ EXCEPT_RULE = "client-except-needs-review"
 CACHE_RULE = "client-cache-with-bearer-auth"
 _BEARER_SEEDS = frozenset({"BearerAuth", "CachedTokenAuth"})
 _STATIC_HEADER_AUTH = "StaticHeaderAuth"
+_FOLLOW = 3
 _UNREADABLE = "a partition it cannot read"
 _BEARER_VALUE = re.compile(r"^[rRbBuUfFtT]*(?:'''|\"\"\"|'|\")\s*bearer\b", re.IGNORECASE)
 _AUTHORIZATION_KEY = re.compile(r"^[rRbBuUfFtT]*(?:'''|\"\"\"|'|\")authorization(?:'''|\"\"\"|'|\")$", re.IGNORECASE)
@@ -167,13 +174,54 @@ def _partition_member(node: SgNode | None) -> str | None:
     return member.text() if owner_name == "Partition" else None
 
 
-def _cache_risk(cls: SgNode) -> tuple[int, str] | None:
-    """Return the 1-based line and kind of the first ``HttpCache(...)`` in ``cls`` that is not per credential."""
+def _module_values(root: SgRoot) -> dict[str, SgNode]:
+    """Return ``name -> value`` for each ``name = value`` statement directly in the module."""
+    values: dict[str, SgNode] = {}
+    for statement in root.root().children():
+        for assignment in statement.children() if statement.kind() == "expression_statement" else []:
+            left, right = assignment.field("left"), assignment.field("right")
+            if (
+                assignment.kind() == "assignment"
+                and left is not None
+                and right is not None
+                and left.kind() == "identifier"
+            ):
+                values[left.text()] = right
+    return values
+
+
+def _caches_behind(value: SgNode, values: dict[str, SgNode], depth: int) -> list[SgNode]:
+    """Return the ``HttpCache(...)`` calls ``value`` is or is built from, following module-level names."""
+    calls = [value, *value.find_all(kind="call")] if value.kind() == "call" else []
+    found = [call for call in calls if _bare_name(call.field("function")) == "HttpCache"]
+    if depth:
+        names = [value] if value.kind() == "identifier" else value.find_all(kind="identifier")
+        for name in names:
+            target = values.get(name.text())
+            if target is not None and target is not value:
+                found += _caches_behind(target, values, depth - 1)
+    return found
+
+
+def _cache_risk(cls: SgNode, values: dict[str, SgNode]) -> tuple[int, str] | None:
+    """Return the 1-based line and kind of the first cache in ``cls`` that is not per credential.
+
+    A cache is an ``HttpCache(...)`` call in the class (reported at that call), or one a module-level name used in the
+    class resolves to, through up to three assignments (``POLICY = TransportPolicy(cache=CACHE)``,
+    ``CACHE = HttpCache(...)``), reported at the class's use of the name.
+    """
     risks = [
         (call.range().start.line + 1, risk)
         for call in cls.find_all(kind="call")
         if _bare_name(call.field("function")) == "HttpCache" and (risk := _partition_risk(call)) is not None
     ]
+    for use in cls.find_all(kind="identifier"):
+        target = values.get(use.text())
+        risks += [
+            (use.range().start.line + 1, risk)
+            for call in (_caches_behind(target, values, _FOLLOW) if target is not None else [])
+            if (risk := _partition_risk(call)) is not None
+        ]
     return min(risks) if risks else None
 
 
@@ -186,9 +234,10 @@ def check_cache(pkg: Package, modules: dict[Path, SgRoot], config: Config) -> li
         root = modules.get(path)
         if root is None:
             continue
+        values = _module_values(root)
         for cls in root.root().find_all(kind="class_definition"):
             name = cls.field("name")
-            risk = _cache_risk(cls)
+            risk = _cache_risk(cls, values)
             auth = next(
                 (found for call in cls.find_all(kind="call") if (found := _bearer_auth(call, bearer)) is not None),
                 None,

@@ -123,6 +123,18 @@ _CLAUSES: dict[str, tuple[str, int]] = {
         "the bearer auth BearerAuth and caches with a partition it cannot read",
         1,
     ),
+    "client-cache-with-bearer-auth/fail/module_cache_passed_as_cache": (
+        "the bearer auth BearerAuth and caches with Partition.SHARED",
+        1,
+    ),
+    "client-cache-with-bearer-auth/fail/module_policy_passed_as_policy": (
+        "the bearer auth BearerAuth and caches with Partition.SHARED",
+        1,
+    ),
+    "client-cache-with-bearer-auth/fail/module_policy_unreadable_partition": (
+        "the bearer auth BearerAuth and caches with a partition it cannot read",
+        1,
+    ),
 }
 
 
