@@ -83,6 +83,22 @@ _CLAUSES: dict[str, tuple[str, int]] = {
         "[dependency-groups].dev is not a list, so it cannot declare headgate[msgspec]",
         1,
     ),
+    "client-except-needs-review/fail/swallowed": ("must re-raise a headgate.errors type", 1),
+    "client-except-needs-review/fail/reraises": ("must re-raise a headgate.errors type", 1),
+    "client-except-needs-review/fail/two_handlers": ("must re-raise a headgate.errors type", 2),
+    "client-except-needs-review/fail/in_another_module": ("must re-raise a headgate.errors type", 1),
+    "client-cache-with-bearer-auth/fail/bearer_auth": ("sets a cache and the bearer auth BearerAuth", 1),
+    "client-cache-with-bearer-auth/fail/http_cache_constructed": ("sets a cache and the bearer auth BearerAuth", 1),
+    "client-cache-with-bearer-auth/fail/cached_token_auth": ("sets a cache and the bearer auth _Mint", 1),
+    "client-cache-with-bearer-auth/fail/cached_token_auth_subscripted_subclass_chain": (
+        "sets a cache and the bearer auth _Mint",
+        1,
+    ),
+    "client-cache-with-bearer-auth/fail/static_header_bearer": (
+        "sets a cache and the bearer auth StaticHeaderAuth",
+        1,
+    ),
+    "client-cache-with-bearer-auth/fail/attribute_spelling": ("sets a cache and the bearer auth BearerAuth", 1),
 }
 
 

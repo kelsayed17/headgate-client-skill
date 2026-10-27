@@ -4,10 +4,15 @@
 """Tests for finding ordering and package discovery."""
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+from headgate_verify import cli
 from headgate_verify.engine import verify
 from headgate_verify.finding import Finding
 from headgate_verify.package import find_packages
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def _touch(path: Path) -> None:
@@ -46,3 +51,57 @@ def test_findings_sort_by_path_line_rule() -> None:
 def test_verify_without_packages_finds_nothing(tmp_path: Path) -> None:
     """A path holding no client package yields no findings."""
     assert verify([tmp_path]) == []
+
+
+_CLEAN_CLIENT = """\
+import httpx2
+from headgate import AsyncBaseClient, HttpOptions, Rate
+from headgate.msgspec import decoder
+
+from .models import Item
+
+BASE_URL = "https://data.example"
+MAX_RATE_PER_SEC = 2
+ITEM = decoder(Item)
+
+
+class LdaClient(AsyncBaseClient):
+    def __init__(self, transport: httpx2.AsyncBaseTransport | None = None) -> None:
+        super().__init__(
+            base_url=BASE_URL, rate=Rate.per_second(MAX_RATE_PER_SEC), http=HttpOptions(transport=transport)
+        )
+
+    async def get_item(self, item_id: str) -> Item:
+        \"\"\"``GET /item/{item_id}`` -- the item.\"\"\"
+        return await self.get(t"item/{item_id}", expect=ITEM)
+
+
+def to_int(text: str) -> int | None:
+    try:
+        return int(text)
+    except ValueError:
+        return None
+"""
+
+
+def test_warning_severity_reported(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A package with only a warning yields it as ``warning`` and the command exits 0."""
+    package = tmp_path / "lda"
+    files = {
+        "__init__.py": '"""The lda client."""\n',
+        "client.py": _CLEAN_CLIENT,
+        "models.py": "import msgspec\n\n\nclass Item(msgspec.Struct, frozen=True):\n    id: str\n",
+        "docs_paths.json": "{}\n",
+        "pyproject.toml": "[project]\nname = 'x'\ndependencies = ['headgate[msgspec]>=0.7.0']\n",
+    }
+    for name, text in files.items():
+        _touch(package / name)
+        (package / name).write_text(text, encoding="utf-8")
+    for name in ("test_client.py", "test_method_names.py"):
+        _touch(tmp_path / "tests" / "lda" / name)
+    findings = verify([package])
+    assert [(finding.rule, finding.severity, finding.line) for finding in findings] == [
+        ("client-except-needs-review", "warning", 26),
+    ], findings
+    assert cli.main([str(package)]) == 0
+    assert "client-except-needs-review" in capsys.readouterr().out
