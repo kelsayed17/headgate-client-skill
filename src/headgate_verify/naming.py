@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
     from pathlib import Path
 
+    from headgate_verify.endpoints import Request
     from headgate_verify.snapshot import DocsSnapshot, Endpoint
 
 DEFAULT_FILLER: frozenset[str] = Config().filler_words
@@ -211,6 +212,99 @@ def _missing_suffix(count: int) -> str:
     return " (1 method has an unreadable path)" if count == 1 else f" ({count} methods have unreadable paths)"
 
 
+@dataclass(frozen=True)
+class _Methods:
+    """The client's public methods that send a request, sorted by what the name check does with each."""
+
+    sent: Mapping[str, Endpoint]
+    """Every method whose request reads, with its endpoint."""
+    unreadable: Mapping[str, str]
+    """Every method whose path cannot be read and is not an exempt write, with the call that sends it."""
+    reads: Mapping[str, Endpoint]
+    """The methods of ``sent`` that read: a GET, or a method named in ``post_reads``."""
+
+
+def _sort_methods(
+    requests: Mapping[str, Request], exempt_writes: Collection[str], post_reads: Collection[str]
+) -> tuple[_Methods, list[str]]:
+    """Sort the client's requests, and report unreadable paths, unlisted writes and unknown listed names."""
+    sent = {name: request.endpoint for name, request in requests.items() if request.endpoint is not None}
+    unreadable = {
+        name: request.call
+        for name, request in requests.items()
+        if request.endpoint is None and name not in exempt_writes
+    }
+    problems = _unreadable(unreadable)
+    problems += [
+        f"{name} sends {endpoint.verb} {endpoint.path}; list it in exempt_writes, or in post_reads if it reads"
+        for name, endpoint in sorted(sent.items())
+        if endpoint.verb != GET and name not in exempt_writes and name not in post_reads
+    ]
+    problems += _unknown_names("exempt_writes", exempt_writes, requests)
+    problems += _unknown_names("post_reads", post_reads, requests)
+    reads = {name: endpoint for name, endpoint in sent.items() if endpoint.verb == GET or name in post_reads}
+    return _Methods(sent, unreadable, reads), problems
+
+
+@dataclass(frozen=True)
+class _Universe:
+    """The read paths names are derived from, and the endpoint each of the client's reads is named after."""
+
+    paths: Mapping[_Key, str]
+    """Each read endpoint, keyed as ``(VERB, segments)``, with its path stripped of ``/`` at either end."""
+    naming: Mapping[str, Endpoint]
+    """Each read method's naming endpoint: the documented one it alone matches (R18), else its own."""
+
+
+def _universe(
+    methods: _Methods, docs: DocsSnapshot, file: str, post_reads: Collection[str]
+) -> tuple[_Universe, list[str]]:
+    """Return the read universe, and report what comparing the methods with the snapshot finds.
+
+    With no ``source`` the client's own reads are the universe and nothing is compared.
+    """
+    if docs.source is None:
+        paths = {_key(endpoint): endpoint.path.strip("/") for endpoint in methods.reads.values()}
+        return _Universe(paths, dict(methods.reads)), []
+    found = _compare(methods.sent, docs, file)
+    matched = {doc for candidates in found.matched.values() for doc in candidates}
+    problems = found.problems + [
+        f"the documented read {endpoint.verb} {endpoint.path} has no method{_missing_suffix(len(methods.unreadable))}"
+        for endpoint in docs.endpoints
+        if endpoint.verb == GET and endpoint not in matched
+    ]
+    documented_reads = [endpoint for endpoint in docs.endpoints if endpoint.verb == GET] + [
+        doc for name in post_reads for doc in found.matched.get(name, [])
+    ]
+    paths = {_key(endpoint): endpoint.path.strip("/") for endpoint in documented_reads}
+    naming = dict(methods.reads) | {
+        name: found.matched[name][0] for name in methods.reads if len(found.matched.get(name, [])) == 1
+    }
+    return _Universe(paths, naming), problems
+
+
+def _misnamed(reads: Mapping[str, Endpoint], universe: _Universe, namer: _Namer) -> list[str]:
+    """Report each read whose name is not the expected one, then each read path that derives no name (R29)."""
+    problems: list[str] = []
+    nameless = {key: "/" + path for key, path in universe.paths.items() if namer.expected(key) is None}
+    for name, endpoint in sorted(reads.items()):
+        naming = universe.naming[name]
+        key = _key(naming)
+        expected = namer.expected(key)
+        if expected is None:
+            nameless.setdefault(key, "/" + naming.path.strip("/"))
+        elif name != expected:
+            problems.append(
+                f"{name} reads {endpoint.verb} {endpoint.path} and should be named {expected} "
+                "(or add an override with a reason)"
+            )
+    problems += [
+        f'the read {verb} {path} derives no name from its path; add an override keyed "{verb} {path}"'
+        for (verb, _), path in sorted(nameless.items())
+    ]
+    return problems
+
+
 def check_names(  # noqa: PLR0913 -- the documented signature: two files and four keyword-only knobs
     client_module: Path,
     snapshot: Path,
@@ -242,55 +336,11 @@ def check_names(  # noqa: PLR0913 -- the documented signature: two files and fou
         project = load_config(client_module)
         filler = project.filler_words if filler is None else filler
         post_reads = project.post_reads if post_reads is None else post_reads
-    requests = read_requests(client_module)
-    methods = {name: request.endpoint for name, request in requests.items() if request.endpoint is not None}
-    unreadable = {
-        name: request.call
-        for name, request in requests.items()
-        if request.endpoint is None and name not in exempt_writes
-    }
-    problems = _unreadable(unreadable)
-    problems += [
-        f"{name} sends {endpoint.verb} {endpoint.path}; list it in exempt_writes, or in post_reads if it reads"
-        for name, endpoint in sorted(methods.items())
-        if endpoint.verb != GET and name not in exempt_writes and name not in post_reads
-    ]
-    problems += _unknown_names("exempt_writes", exempt_writes, requests)
-    problems += _unknown_names("post_reads", post_reads, requests)
-    reads = {name: endpoint for name, endpoint in methods.items() if endpoint.verb == GET or name in post_reads}
-    naming = dict(reads)
-    if docs.source is None:
-        universe = {_key(endpoint): endpoint.path.strip("/") for endpoint in reads.values()}
-    else:
-        found = _compare(methods, docs, snapshot.name)
-        problems += found.problems
-        matched = {doc for candidates in found.matched.values() for doc in candidates}
-        problems += [
-            f"the documented read {endpoint.verb} {endpoint.path} has no method{_missing_suffix(len(unreadable))}"
-            for endpoint in docs.endpoints
-            if endpoint.verb == GET and endpoint not in matched
-        ]
-        documented_reads = [endpoint for endpoint in docs.endpoints if endpoint.verb == GET] + [
-            doc for name in post_reads for doc in found.matched.get(name, [])
-        ]
-        universe = {_key(endpoint): endpoint.path.strip("/") for endpoint in documented_reads}
-        naming |= {name: found.matched[name][0] for name in reads if len(found.matched.get(name, [])) == 1}
-    namer = _namer(universe, overrides, filler)
-    nameless = {key: "/" + path for key, path in universe.items() if namer.expected(key) is None}
-    for name, endpoint in sorted(reads.items()):
-        key = _key(naming[name])
-        expected = namer.expected(key)
-        if expected is None:
-            nameless.setdefault(key, "/" + naming[name].path.strip("/"))
-        elif name != expected:
-            problems.append(
-                f"{name} reads {endpoint.verb} {endpoint.path} and should be named {expected} "
-                "(or add an override with a reason)"
-            )
-    problems += [
-        f'the read {verb} {path} derives no name from its path; add an override keyed "{verb} {path}"'
-        for (verb, _), path in sorted(nameless.items())
-    ]
-    problems += _collisions(universe, namer)
-    problems += _stale(overrides, {*universe, *map(_key, naming.values())}, namer)
+    methods, problems = _sort_methods(read_requests(client_module), exempt_writes, post_reads)
+    universe, compared = _universe(methods, docs, snapshot.name, post_reads)
+    problems += compared
+    namer = _namer(universe.paths, overrides, filler)
+    problems += _misnamed(methods.reads, universe, namer)
+    problems += _collisions(universe.paths, namer)
+    problems += _stale(overrides, {*universe.paths, *map(_key, universe.naming.values())}, namer)
     return problems

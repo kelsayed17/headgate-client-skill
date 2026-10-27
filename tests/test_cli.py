@@ -129,3 +129,13 @@ def test_bad_config_exits_two(
     monkeypatch.chdir(tmp_path)
     assert cli.main([str(tmp_path)]) == USAGE_ERROR
     assert "bogus" in capsys.readouterr().err
+
+
+def test_non_utf8_config_exits_two(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A pyproject that is not UTF-8 is a usage error naming the file, not a traceback."""
+    (tmp_path / "pyproject.toml").write_bytes(b'[tool.headgate-verify]\nfiller-words = ["\xff"]\n')
+    monkeypatch.chdir(tmp_path)
+    assert cli.main([str(_package(tmp_path))]) == USAGE_ERROR
+    assert "pyproject.toml is not UTF-8" in capsys.readouterr().err

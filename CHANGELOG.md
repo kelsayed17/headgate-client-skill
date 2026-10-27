@@ -25,6 +25,8 @@ All notable changes to this project are recorded here. The format follows
 ### Fixed
 
 - `one-class-per-host` no longer reports a comment inside a client class's bases list as a second base.
+- A `pyproject.toml` that is not UTF-8, or cannot be read, is a usage error (exit 2) naming the file, not a traceback;
+  `check_names` raises `ConfigError` for it.
 
 The conventions were first worked out, and their client rules first written, for the author's own private API
 clients; this release restates them against headgate's public API, with nothing of that project left in them.

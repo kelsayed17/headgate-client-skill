@@ -18,6 +18,7 @@ from headgate_verify.exemptions import apply_exemptions
 from headgate_verify.package import find_packages
 from headgate_verify.parsing import parse_package
 from headgate_verify.rules import load_rules, rule_from_yaml, run_rules
+from tests.helpers import write
 
 if TYPE_CHECKING:
     from headgate_verify.finding import Finding
@@ -34,13 +35,6 @@ rule:
   kind: identifier
   regex: '^({{config.filler_words}})$'
 """
-
-
-def _write(root: Path, name: str, text: str) -> Path:
-    path = root / name
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    return path
 
 
 def _run(pkg: Package, rule: YamlRule, config: Config) -> list[Finding]:
@@ -93,7 +87,7 @@ def test_unknown_placeholder_is_refused() -> None:
 
 def test_config_placeholder_writes_an_alternation(tmp_path: Path) -> None:
     """``{{config.<field>}}`` becomes an escaped alternation of the field's values; an empty field matches nothing."""
-    _write(tmp_path, "client.py", "api = 1\nv2 = 2\nkeep = 3\na_b = 4\n")
+    write(tmp_path, "client.py", "api = 1\nv2 = 2\nkeep = 3\na_b = 4\n")
     (pkg,) = find_packages([tmp_path])
     rule = rule_from_yaml(_FILLER_RULE, "filler-name")
     found = _run(pkg, rule, Config(filler_words=frozenset({"api", "v2"})))
@@ -103,8 +97,8 @@ def test_config_placeholder_writes_an_alternation(tmp_path: Path) -> None:
 
 def test_files_globs_scope_a_rule(tmp_path: Path) -> None:
     """A rule reads only the modules its ``files`` globs name, relative to the package root."""
-    _write(tmp_path, "client.py", "api = 1\n")
-    _write(tmp_path, "models.py", "api = 1\n")
+    write(tmp_path, "client.py", "api = 1\n")
+    write(tmp_path, "models.py", "api = 1\n")
     (pkg,) = find_packages([tmp_path])
     rule = rule_from_yaml(_FILLER_RULE.replace("rule:", "files: [models.py]\nrule:"), "filler-name")
     found = _run(pkg, rule, Config())
@@ -113,8 +107,8 @@ def test_files_globs_scope_a_rule(tmp_path: Path) -> None:
 
 def test_skip_packages_in_exempts_a_package_by_name(tmp_path: Path) -> None:
     """A rule with ``skip-packages-in: <field>`` does not run in a package whose directory is named in that field."""
-    _write(tmp_path / "cboe", "client.py", "api = 1\n")
-    _write(tmp_path / "fred", "client.py", "api = 1\n")
+    write(tmp_path / "cboe", "client.py", "api = 1\n")
+    write(tmp_path / "fred", "client.py", "api = 1\n")
     pkgs = find_packages([tmp_path])
     rule = rule_from_yaml(
         _FILLER_RULE.replace("rule:", "skip-packages-in: browser_user_agent_packages\nrule:"), "filler-name"
@@ -128,8 +122,8 @@ def test_skip_packages_in_exempts_a_package_by_name(tmp_path: Path) -> None:
 
 def test_unparseable_file_is_a_finding(tmp_path: Path) -> None:
     """An unparseable module is one parse-error finding and nothing else; the modules beside it are still checked."""
-    client = _write(tmp_path, "client.py", "def (:\n")
-    _write(tmp_path, "models.py", "x = 1\n")
+    client = write(tmp_path, "client.py", "def (:\n")
+    write(tmp_path, "models.py", "x = 1\n")
     (pkg,) = find_packages([tmp_path])
     assert list(parse_package(pkg).modules) == [tmp_path / "models.py"]
     findings = _verify([tmp_path])
@@ -150,7 +144,7 @@ def test_reasoned_allow_silences_the_finding(tmp_path: Path) -> None:
 
 def test_allow_on_the_enclosing_def_line(tmp_path: Path) -> None:
     """An allow comment on the ``def`` line covers a finding inside the function body."""
-    _write(
+    write(
         tmp_path,
         "client.py",
         "from headgate import AsyncBaseClient\n\n\nclass C(AsyncBaseClient):\n    pass\n\n\n"
@@ -167,7 +161,7 @@ def test_allow_on_the_enclosing_def_line(tmp_path: Path) -> None:
 
 def test_missing_node_is_a_parse_error(tmp_path: Path) -> None:
     """Code tree-sitter repairs with a MISSING node, but Python refuses, is a parse-error at Python's line."""
-    client = _write(tmp_path, "client.py", '"""Doc."""\n\n\ndef f(:\n    pass\n')
+    client = write(tmp_path, "client.py", '"""Doc."""\n\n\ndef f(:\n    pass\n')
     findings = _verify([tmp_path])
     assert [(finding.rule, finding.path, finding.line) for finding in findings] == [("parse-error", client, 4)]
 
@@ -176,9 +170,9 @@ def test_module_finding_is_covered_from_the_leading_block(tmp_path: Path) -> Non
     """A finding against the module is covered by an allow comment anywhere before the first statement."""
     header = "# Copyright (c) 2026 Example Author\n# SPDX-License-Identifier: MIT\n"
     allow = "# headgate-verify: allow client-module-has-a-client -- generated\n"
-    _write(tmp_path, "client.py", f'{header}\n{allow}"""Doc."""\n')
+    write(tmp_path, "client.py", f'{header}\n{allow}"""Doc."""\n')
     assert _verify([tmp_path]) == []
-    _write(tmp_path, "client.py", f'{header}"""Doc."""\n{allow}')
+    write(tmp_path, "client.py", f'{header}"""Doc."""\n{allow}')
     assert [(finding.rule, finding.line) for finding in _verify([tmp_path])] == [
         ("client-module-has-a-client", 1),
         ("bad-exemption", 4),
@@ -187,7 +181,7 @@ def test_module_finding_is_covered_from_the_leading_block(tmp_path: Path) -> Non
 
 def test_unreadable_module_is_a_parse_error(tmp_path: Path) -> None:
     """A module that cannot be read (here a dangling symlink) is a parse-error finding, not a traceback."""
-    client = _write(tmp_path, "client.py", '"""Doc."""\n')
+    client = write(tmp_path, "client.py", '"""Doc."""\n')
     dangling = tmp_path / "models.py"
     dangling.symlink_to(tmp_path / "gone.py")
     findings = _verify([tmp_path])
@@ -203,7 +197,7 @@ def test_parser_exhaustion_is_a_parse_error(
     error: type[Exception], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A module too deep or too large for Python's parser is a parse-error finding, not a traceback."""
-    client = _write(tmp_path, "client.py", '"""Doc."""\n')
+    client = write(tmp_path, "client.py", '"""Doc."""\n')
 
     def refuse(*_args: object, **_kwargs: object) -> None:
         raise error
@@ -216,7 +210,7 @@ def test_parser_exhaustion_is_a_parse_error(
 
 def test_yaml_finding_carries_the_rule_note_as_its_fix(tmp_path: Path) -> None:
     """A YAML rule's ``note`` reaches its findings as ``fix``."""
-    _write(tmp_path, "client.py", '"""No client class."""\n')
+    write(tmp_path, "client.py", '"""No client class."""\n')
     (finding,) = _verify([tmp_path])
     note = {rule.id: rule.fix for rule in load_rules()}["client-module-has-a-client"]
     assert finding.rule == "client-module-has-a-client"

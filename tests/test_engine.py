@@ -12,17 +12,13 @@ from headgate_verify.checks import models
 from headgate_verify.engine import verify
 from headgate_verify.finding import Finding
 from headgate_verify.package import NoPackageError, find_packages
-
-
-def _touch(path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("")
+from tests.helpers import write, write_all
 
 
 def test_directory_of_packages_checks_each_once(tmp_path: Path) -> None:
     """A directory yields every package below it once; hidden, venv and test trees are skipped."""
     for rel in ("a/client.py", "b/client.py", "b/sub/client.py", ".venv/x/client.py", "tests/t/client.py"):
-        _touch(tmp_path / rel)
+        write(tmp_path, rel)
     roots = [package.root for package in find_packages([tmp_path])]
     assert roots == [tmp_path / "a", tmp_path / "b", tmp_path / "b" / "sub"]
     assert [package.root for package in find_packages([tmp_path / "a" / "client.py", tmp_path / "a"])] == [
@@ -33,7 +29,7 @@ def test_directory_of_packages_checks_each_once(tmp_path: Path) -> None:
 def test_package_lists_its_modules(tmp_path: Path) -> None:
     """A package holds the python files directly in its directory."""
     for name in ("client.py", "models.py", "notes.txt"):
-        _touch(tmp_path / "a" / name)
+        write(tmp_path / "a", name)
     (package,) = find_packages([tmp_path])
     assert package.modules == (tmp_path / "a" / "client.py", tmp_path / "a" / "models.py")
 
@@ -51,8 +47,7 @@ def test_verify_without_packages_raises(tmp_path: Path) -> None:
     """A path holding no client package is refused, naming every such path, not reported clean."""
     (tmp_path / "a").mkdir()
     (tmp_path / "b").mkdir()
-    (tmp_path / "c" / "lda").mkdir(parents=True)
-    (tmp_path / "c" / "lda" / "client.py").write_text("")
+    write(tmp_path / "c" / "lda", "client.py")
     with pytest.raises(NoPackageError) as raised:
         verify([tmp_path / "a", tmp_path / "c", tmp_path / "b"])
     assert raised.value.paths == (tmp_path / "a", tmp_path / "b")
@@ -61,7 +56,7 @@ def test_verify_without_packages_raises(tmp_path: Path) -> None:
 def test_build_directories_are_skipped(tmp_path: Path) -> None:
     """Discovery skips virtualenvs, build output, node_modules and site-packages."""
     for name in ("venv", "build", "dist", "node_modules", "site-packages", "lib/site-packages", "ok"):
-        _touch(tmp_path / name / "x" / "client.py")
+        write(tmp_path / name / "x", "client.py")
     assert [package.root for package in find_packages([tmp_path])] == [tmp_path / "ok" / "x"]
 
 
@@ -106,11 +101,9 @@ def test_warning_severity_reported(tmp_path: Path, capsys: pytest.CaptureFixture
         "docs_paths.json": '{"source": null, "retrieved": "2026-10-26", "reason": "none", "endpoints": []}\n',
         "pyproject.toml": "[project]\nname = 'x'\ndependencies = ['headgate[msgspec]>=0.7.0']\n",
     }
-    for name, text in files.items():
-        _touch(package / name)
-        (package / name).write_text(text, encoding="utf-8")
+    write_all(package, files)
     for name in ("test_client.py", "test_method_names.py"):
-        _touch(tmp_path / "tests" / "lda" / name)
+        write(tmp_path / "tests" / "lda", name)
     findings = verify([package])
     assert [(finding.rule, finding.severity, finding.line) for finding in findings] == [
         ("client-except-needs-review", "warning", 26),
@@ -121,8 +114,8 @@ def test_warning_severity_reported(tmp_path: Path, capsys: pytest.CaptureFixture
 
 def test_check_finding_carries_its_fix(tmp_path: Path) -> None:
     """A Python check's findings carry the fix sentence its ``RULE`` registers."""
-    _touch(tmp_path / "lda" / "client.py")
-    (tmp_path / "lda" / "models.py").write_text("class LdaFiling:\n    pass\n")
+    write(tmp_path / "lda", "client.py")
+    write(tmp_path / "lda", "models.py", "class LdaFiling:\n    pass\n")
     (finding,) = [finding for finding in verify([tmp_path]) if finding.rule == models.RULE.id]
     assert finding.fix == models.RULE.fix
     assert finding.fix

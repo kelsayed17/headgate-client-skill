@@ -22,6 +22,7 @@ from headgate_verify.checks import CHECKS
 from headgate_verify.checks.flavour import detect_flavour
 from headgate_verify.checks.models import provider_prefix
 from headgate_verify.engine import verify
+from tests.helpers import write_all
 
 if TYPE_CHECKING:
     from headgate_verify.parsing import Modules
@@ -155,13 +156,6 @@ def _copy(entry: Path, tmp_path: Path) -> Path:
     return target
 
 
-def _write(root: Path, files: dict[str, str]) -> None:
-    for name, text in files.items():
-        path = root / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
-
-
 def _own(paths: list[Path], rule: str) -> list[str]:
     return [finding.render() for finding in verify(paths) if finding.rule == rule]
 
@@ -195,7 +189,7 @@ def test_provider_prefix_is_the_package_name_in_pascal_case() -> None:
 def test_multi_word_package_prefix(tmp_path: Path) -> None:
     """In package ``open_meteo``, ``OpenMeteoForecast`` is reported and ``Forecast`` is not."""
     package = tmp_path / "open_meteo"
-    _write(
+    write_all(
         package,
         {
             "client.py": "from headgate import AsyncBaseClient\n",
@@ -220,16 +214,16 @@ _COMPLETE_PACKAGE = {
 
 def test_tests_under_the_project_root(tmp_path: Path) -> None:
     """A package's tests may live at ``tests/<package name>/`` under the directory of the nearest pyproject."""
-    _write(tmp_path, {"pyproject.toml": "[project]\nname = 'x'\n"})
-    _write(tmp_path / "src" / "lda", _COMPLETE_PACKAGE)
-    _write(tmp_path / "tests" / "lda", {"test_client.py": "", "test_method_names.py": ""})
+    write_all(tmp_path, {"pyproject.toml": "[project]\nname = 'x'\n"})
+    write_all(tmp_path / "src" / "lda", _COMPLETE_PACKAGE)
+    write_all(tmp_path / "tests" / "lda", {"test_client.py": "", "test_method_names.py": ""})
     assert _own([tmp_path / "src"], "package-layout") == []
 
 
 def test_tests_under_the_root_need_a_pyproject(tmp_path: Path) -> None:
     """With no pyproject there is no project root: ``tests/lda`` two levels up is neither a root's nor a sibling."""
-    _write(tmp_path / "src" / "clients" / "lda", _COMPLETE_PACKAGE)
-    _write(tmp_path / "tests" / "lda", {"test_client.py": "", "test_method_names.py": ""})
+    write_all(tmp_path / "src" / "clients" / "lda", _COMPLETE_PACKAGE)
+    write_all(tmp_path / "tests" / "lda", {"test_client.py": "", "test_method_names.py": ""})
     (finding,) = _own([tmp_path / "src"], "package-layout")
     assert "has no tests directory" in finding
     assert str(tmp_path / "src" / "clients" / "tests" / "lda") in finding
@@ -237,22 +231,22 @@ def test_tests_under_the_root_need_a_pyproject(tmp_path: Path) -> None:
 
 def test_tests_beside_the_package(tmp_path: Path) -> None:
     """R14: ``<package>/../tests/<package name>/`` holds the tests, as the spec draws it, with no pyproject needed."""
-    _write(tmp_path / "clients" / "lda", _COMPLETE_PACKAGE)
-    _write(tmp_path / "clients" / "tests" / "lda", {"test_client.py": "", "test_method_names.py": ""})
+    write_all(tmp_path / "clients" / "lda", _COMPLETE_PACKAGE)
+    write_all(tmp_path / "clients" / "tests" / "lda", {"test_client.py": "", "test_method_names.py": ""})
     assert _own([tmp_path / "clients" / "lda"], "package-layout") == []
 
 
 def test_tests_beside_the_package_missing_a_file(tmp_path: Path) -> None:
     """A sibling tests directory that exists but lacks a file names the file."""
-    _write(tmp_path / "clients" / "lda", _COMPLETE_PACKAGE)
-    _write(tmp_path / "clients" / "tests" / "lda", {"test_client.py": ""})
+    write_all(tmp_path / "clients" / "lda", _COMPLETE_PACKAGE)
+    write_all(tmp_path / "clients" / "tests" / "lda", {"test_client.py": ""})
     (finding,) = _own([tmp_path / "clients" / "lda"], "package-layout")
     assert f"the tests directory {tmp_path / 'clients' / 'tests' / 'lda'} has no test_method_names.py" in finding
 
 
 def test_unreadable_pyproject_is_a_finding(tmp_path: Path) -> None:
     """A pyproject the verifier cannot open is a finding, not a traceback."""
-    _write(tmp_path / "lda", {"client.py": "import msgspec\n"})
+    write_all(tmp_path / "lda", {"client.py": "import msgspec\n"})
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text("[project]\nname = 'x'\ndependencies = ['headgate[msgspec]']\n")
     pyproject.chmod(0)
@@ -268,8 +262,8 @@ def test_unreadable_pyproject_is_a_finding(tmp_path: Path) -> None:
 
 def test_flavour_extra_declared_in_a_pyproject_above_the_package(tmp_path: Path) -> None:
     """The nearest pyproject at or above the package declares the extra."""
-    _write(tmp_path, {"pyproject.toml": "[project]\nname = 'x'\ndependencies = ['headgate[msgspec]>=0.7.0']\n"})
-    _write(tmp_path / "src" / "lda", {"client.py": "import msgspec\n"})
+    write_all(tmp_path, {"pyproject.toml": "[project]\nname = 'x'\ndependencies = ['headgate[msgspec]>=0.7.0']\n"})
+    write_all(tmp_path / "src" / "lda", {"client.py": "import msgspec\n"})
     assert _own([tmp_path / "src"], "one-flavour") == []
 
 
@@ -298,7 +292,7 @@ def test_detect_flavour(sources: dict[str, str], expected: str | None) -> None:
 
 def test_check_findings_honour_allow_comments(tmp_path: Path) -> None:
     """An allow comment drops a check's finding as it does a YAML rule's: on its line, or above the first statement."""
-    _write(
+    write_all(
         tmp_path / "lda",
         {
             "client.py": "# headgate-verify: allow package-layout -- layout checked elsewhere\n"
