@@ -1,0 +1,3 @@
+class C(AsyncBaseClient):
+    class Endpoints:
+        async def get_x(self) -> X: ...

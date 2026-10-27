@@ -1,0 +1,86 @@
+# No hand-rolled page loop. A paged GET is `return self.paginate(...)` (client-method-shape's walk shape), headgate's
+# lazy walk with its pager and page budget, so a client package needs no page loop of its own anywhere: not in
+# client.py, and not in pagination.py, which holds only the pager and budget values and any helper that collects a
+# walk.
+#
+# Scope: every module of the package.
+#
+# Reported: a loop shaped like a page walk that awaits a FETCH anywhere inside it (body, condition, `else`, a nested
+# function or lambda). The shapes are
+#   * `while` (unbounded: the obvious evasion of a `range`-only rule, and the strictly worse defect);
+#   * `for ... in range(...)` (counted), parenthesised or not;
+#   * `for ... in count(...)` / `itertools.count(...)` (unbounded).
+# A fetch is an `await` (through any parentheses) of a call to
+#   * `self.<verb>(...)`, verb in get, post, put, patch, delete, head, or headgate's internal `_request` /
+#     `_exchange`;
+#   * a PARAMETER of an enclosing def, any number of defs up (a walk taking the single-page method as an argument, and
+#     a closure over an outer `get`), never `self`; a `*args`/`**kwargs` name is not a parameter here;
+#   * `<parameter>.<verb>(...)` (a walk taking the client).
+# `for x in <collection>` is a FAN-OUT (one request per year, one per host), not pagination, and is not a page-walk
+# shape.
+#
+# PORTED from the source rule of the same name. Changed: the source exempted `<package>/pagination.py`, the location
+# it asked a walk to live in; with headgate's `paginate` the walk lives in no hand-written loop, so pagination.py is
+# read like every other module.
+#
+# DISCLOSED: a comprehension over `range(...)` awaiting a fetch is not a loop statement and is not read; the rule says
+# a page walk is never hand-written, never whether a paged endpoint has a walk at all.
+id: client-no-hand-rolled-page-loop
+language: python
+severity: error
+message: a page walk is `self.paginate(...)`, never a hand-written loop
+note: >-
+  Return `self.paginate(path, expect=READER, pages=PAGES, limit=MAX_PAGES)` from a sync method, with the pager
+  (`NextUrl`, `Cursor`, `Offset`, `LinkHeader`) and the `PageLimit` as module-level values.
+utils:
+  verb: {regex: '^(delete|get|head|patch|post|put|_request|_exchange)$'}
+  # An identifier in a parameter-NAME position (not a type, not a default value, not `*args`/`**kwargs`).
+  param-name:
+    kind: identifier
+    any:
+      - inside: {kind: parameters}
+      - inside: {kind: typed_parameter}
+      - inside: {field: name, kind: default_parameter}
+      - inside: {field: name, kind: typed_default_parameter}
+  # A name that is a parameter of some enclosing def; never `self`.
+  injected:
+    all:
+      - {kind: identifier, not: {regex: '^self$'}, pattern: $PARAM}
+      - inside:
+          kind: function_definition
+          stopBy: end
+          has: {field: parameters, has: {stopBy: end, matches: param-name, pattern: $PARAM}}
+  fetch-callee:
+    any:
+      - kind: attribute
+        all:
+          - has: {field: object, regex: '^self$'}
+          - has: {field: attribute, matches: verb}
+      - matches: injected
+      - kind: attribute
+        all:
+          - has: {field: object, matches: injected}
+          - has: {field: attribute, matches: verb}
+  fetch:
+    kind: await
+    has:
+      stopBy: {not: {kind: parenthesized_expression}}
+      kind: call
+      has:
+        field: function
+        any:
+          - matches: fetch-callee
+          - {kind: parenthesized_expression, has: {stopBy: {not: {kind: parenthesized_expression}}, matches: fetch-callee}}
+  counter:
+    kind: call
+    has: {field: function, regex: '^(range|count|itertools\.count)$'}
+rule:
+  any:
+    - kind: while_statement
+    - kind: for_statement
+      has:
+        field: right
+        any:
+          - matches: counter
+          - {kind: parenthesized_expression, has: {stopBy: {not: {kind: parenthesized_expression}}, matches: counter}}
+  has: {stopBy: end, matches: fetch}

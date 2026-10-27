@@ -1,0 +1,50 @@
+# An order-executing or otherwise non-idempotent write names its retry policy. headgate re-sends a POST or PATCH only
+# when it can tell nothing was processed, but a client built with a policy that re-sends every method, or a call that
+# reaches a host without idempotency keys, can send an order twice. Naming `retry=` at the call makes the choice
+# visible where the write is.
+#
+# Scope: every module of the package.
+#
+# Reported: a call `self.post(...)`, `self.put(...)`, `self.patch(...)` or `self.delete(...)` (the callee
+# parenthesised or not) with no `retry=` keyword, anywhere inside a def (sync or async, at any nesting, through nested
+# defs and lambdas) whose name contains one of the project's write-name fragments (`Config.write_name_fragments`,
+# `[tool.headgate-verify] write-name-fragments`; by default order, orders, transfer, withdraw, payment). A def whose
+# name contains `preview` or `cancel` is not executing: a preview sends nothing that executes, and a re-sent cancel is
+# the one write you want to land. `retry=` with ANY value satisfies the rule; `**kwargs` carrying it does not.
+#
+# PORTED from the source rule of the same name. Changed: the source's fixed list of executing names (place_order,
+# submit_order, close_position, liquidat, ...) is the configured fragment list; since the default fragment `order`
+# also matches `cancel_order`, which the source's list never named, `cancel` joins `preview` as a name that is not
+# executing.
+#
+# DISCLOSED: a write issued through a helper the executing method calls (`self._submit(...)` whose own name holds no
+# fragment) is not followed; a fragment matches anywhere in a name (`order` in `border_crossings`).
+id: client-order-writes-name-retry
+language: python
+severity: error
+message: an order-executing or non-idempotent write names retry= (a re-sent order is a second order)
+note: >-
+  Pass `retry=False` (or the policy you mean). A method that is idempotent under replay but whose name holds a
+  fragment takes an allow comment with its reason; a project's fragments are `write-name-fragments` in
+  `[tool.headgate-verify]`.
+utils:
+  self-write:
+    kind: attribute
+    all:
+      - has: {field: object, regex: '^self$'}
+      - has: {field: attribute, regex: '^(post|put|patch|delete)$'}
+rule:
+  kind: call
+  has:
+    field: function
+    any:
+      - matches: self-write
+      - {kind: parenthesized_expression, has: {stopBy: {not: {kind: parenthesized_expression}}, matches: self-write}}
+  not: {has: {field: arguments, has: {kind: keyword_argument, has: {field: name, regex: '^retry$'}}}}
+  inside:
+    kind: function_definition
+    stopBy: end
+    has:
+      field: name
+      regex: '{{config.write_name_fragments}}'
+      not: {regex: 'preview|cancel'}

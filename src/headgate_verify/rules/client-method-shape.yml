@@ -1,0 +1,562 @@
+# The client-method shape: a public client method is one forward of the request it was handed.
+#
+# SCOPE. Every module of the package. The collector clause and the AsyncBaseClient-alias clause read every module.
+# Everything else reads only a CLIENT MODULE: one where some class names `AsyncBaseClient` in its bases, bare or
+# dotted. client-module-has-a-client reports a client.py that stopped being one.
+#
+# A TRANSPORT CLASS is a class in a client module whose bases name a `_`-prefixed name, a name ending in `Client`
+# (`AsyncBaseClient` included, bare or dotted), or another class defined in the module. That is deliberately wider
+# than the classes that should exist, so a class shaped wrong is still read: `class Sub(PublicClient)` and
+# `class Sub(Public)` are transport classes, and the class clause below reports them. A class's NAME does not count,
+# so `class _Sender(Protocol)` is not one.
+#
+# A PUBLIC METHOD is a function directly in a transport class body whose name does not start with `_`, other than
+# `aclose` (lifecycle) and a `@property` accessor. It is reported when ANY of these holds:
+#
+#   * it is decorated (any decorator; a `@property` accessor is not a public method);
+#   * it has a parameter named `params` that is not the `**params` collector (query parameters arrive as
+#     `**params: Unpack[<X>Params]`, never as one mapping argument);
+#   * its body is not exactly ONE statement after an optional docstring, that statement being one of:
+#       (a) `return await self.<verb>(...)`, `<verb>` in get|post|put|patch|delete|head;
+#       (b) `await self.<verb>(...)`, a void, and nothing else in the statement (not a tuple of two);
+#       (c) `return await self._<leg>(...)`, where `_<leg>` is a plain method of the SAME class (a direct child of the
+#           class body, not decorated, and bound only once: see THE CLASS) whose own body is (a) or (b), after an
+#           optional docstring. A leg that is itself a delegate does not conform;
+#       (d) `return await _<fn>(self, ...)`, `self` FIRST, where `_<fn>` is a function directly in the module (bound
+#           only once) whose first parameter (annotated) is the receiver and whose body, after an optional docstring,
+#           is one statement `return await <receiver>.<verb>(...)`;
+#       (e) `return self.paginate(...)` in a SYNC def: the lazy walk headgate's `paginate` returns (not awaited; an
+#           async def would hand back a coroutine). It takes only the keywords headgate 0.7.0's `paginate` takes
+#           besides a body (`expect`, `pages`, `retry`, `limit` and `PageOptions`: `params`, `headers`, `timeout`,
+#           `deadline`, `idempotency_key`, `follow_redirects`, `cache_ttl`), so a body option (`body`, `json`,
+#           `data`, `content`, `files`), which headgate refuses on a walk, is reported. `pages=` and `limit=` are
+#           both present and bare UPPER_CASE names, the pager and page budget built once beside the client.
+#     The legs are found by NAME in the class (c) or the module (d): `return await self._request(...)` does not
+#     conform, because `_request` is the base class's, and a leg the class does define is read and must itself
+#     conform. A sync `def` other than (e) is reported through its body: every other form awaits. Comments are not
+#     statements, and an f-string, t-string or `"doc", x` tuple is not a docstring.
+#
+# THE FORWARD CALL, `self.<verb>(...)` in (a)/(b), in a leg and in a module leg, and `self.paginate(...)` in (e), is
+# reported when its arguments contain, at any depth: an `await`; a public `self.<name>` (called or not); a
+# comprehension, generator or lambda; a walrus; a dict literal; a `*` or `**` splat; a call to a capitalised name
+# (`Model(...)`, `httpx2.Timeout(...)`) anywhere in a keyword value other than `body=`. Its keywords are only the ones
+# headgate 0.7.0's verbs take (`RequestOptions` plus the verb's own): `params`, `body`, `json`, `data`, `content`,
+# `files`, `headers`, `idempotency_key`, `expect`, `retry`, `timeout`, `deadline`, `follow_redirects` and
+# `cache_ttl` (not `auth=`, `cookies=`, `extensions=`, a typo, or paginate's `pages=`/`limit=`). The knobs `retry`,
+# `follow_redirects` and `cache_ttl` are a literal or a parameter (so a per-call cache lifetime a method COMPUTES,
+# `cache_ttl=_year_ttl(year)`, is reported). `deadline` may also be a bare UPPER_CASE name, public or `_`-prefixed:
+# a module constant, fixed at import. `timeout` is a parameter or such a name only: headgate takes a `Timeouts`, never
+# a number, and a `Timeouts(...)` built at the call is a value computed per call, so it is a module constant.
+#
+# `expect=` (R3) is a bare UPPER_CASE name, public or `_`-prefixed, that the module binds at module level (an
+# assignment, annotated or not, or an import, aliased or not), or one of headgate's own readers `nothing` and
+# `as_bytes`. Readers are module-level values built at import, so a bad declaration fails at import, not on the
+# first call: `decoder(Foo)`, `Expect(...)`, `Expect(FOO).on(...)` or any other call there is reported, as is a
+# lowercase or dotted name, or an UPPER_CASE name the module does not bind (a parameter, a local). `head()` may omit
+# `expect=` (headgate reads `nothing` then).
+#
+# Each REQUEST keyword is FORWARDED, where "a request parameter" means a parameter NAME of the method (not a type in
+# its annotation, not a default value) whose default, if it has one, is None, so neither a module global nor a
+# parameter defaulting to one passes:
+#   * `params=` is the bare name `params`, and a request parameter;
+#   * `body=` is a writer applied to a request parameter, `<WRITER>(<request parameter>)`: an UPPER_CASE name, public
+#     or `_`-prefixed, the module's `encoder(Type)` built once at import (headgate 0.6.0, the write side of `expect=`);
+#   * `json=` is a request parameter: a JSON body the client encodes is a `body=` writer, so `json=to_builtins(...)`
+#     is reported;
+#   * `data=`, `content=`, `files=`, `idempotency_key=` are a request parameter, or `to_builtins(<request
+#     parameter>)`, or `to_builtins(<request parameter>, drop_none=True)`;
+#   * `headers=` is a request parameter, or `self._<helper>(<request parameters>)`.
+# "The method's own" parameter is exact in practice: a one-statement body cannot hold a nested function, so no other
+# function's parameter is in reach.
+#
+# THE DELEGATE CALL in (c)/(d) is a whitelist: each argument is a string (a path), a request parameter (`self` is
+# one), a capitalised name (a payload type), `**<request parameter>`, `True` or `False`, or a keyword whose value is
+# one of those. Nothing inside one (a string's interpolation) is an `await`, a call or an attribute.
+#
+# THE COLLECTOR. A `**<name>: Unpack[...]` parameter is named `params`, and a `**params` parameter, in any function,
+# is typed `Unpack[<X>Params]`, the endpoint's TypedDict. `**kwargs: Any` is not a collector.
+#
+# DEFAULTS. No parameter default of any function in a client module is, or contains, a call, a collection, a lambda or
+# a comprehension (`body: B = B(kind="market")`, `params: P = {"limit": 100}`): that is a request built once, at
+# import time. A default that is a module global is not read here; a REQUEST parameter defaulting to one is refused
+# by the forwarding clauses above.
+#
+# THE CLASS is plain, so the method clauses cannot be routed around. A transport class is reported when
+#   * a base is anything but `AsyncBaseClient` or a `_`-prefixed class defined in this module: not a dotted
+#     `x.AsyncBaseClient`, not a public client (`Sub(PublicClient)` would reuse a surface this rule never re-reads),
+#     not a `_` base imported from elsewhere, not a `metaclass=`;
+#   * it has more than one base: a mixin, in either order, carries methods this rule never reads;
+#   * it is decorated;
+#   * it defines one of headgate 0.7.0's own request methods (`_request`, `_streamed`, `_prepare`, `_deadline_of`,
+#     `_retry_of`, `_stamp_idempotency_key`, `_reported`, `_deadline`, `_exchange`, `_sent`, `_network_failure`,
+#     `_breaker_for`, `_breaker_listener`, `_dispatch`, `_site`, `_unsent_site`): overriding one reshapes every call
+#     behind the one-statement bodies;
+#   * its body holds anything but methods, docstrings, comments, `pass`, and assignments of an UPPER_CASE name to a
+#     `_` name (`_BASE: ClassVar[str] = _PROD_BASE`, or annotated only). Not a literal (a host in a ClassVar), not a
+#     lowercase rebind (`_leg = _evil`), not a chained assignment, not a public name, not a nested class or a loop.
+#     Of the dunders only `__init__`, `__aenter__` and `__aexit__` (`__getattr__` could synthesize endpoints;
+#     `__new__`, `__call__`, `__getattribute__` likewise), and no decorated dunder;
+#   * it binds one name twice (two methods, a decorated duplicate, a method and an assignment): the leg lookup reads
+#     the first binding while the runtime runs the last. ruff's F811 does not cover this: it treats `_` names as
+#     dummies. The same holds for a module function bound twice in a client module.
+# A `@property` accessor is reported when it is async, calls anything on `self`, or hands out a method of its class
+# uncalled (`return self._get_total`): each is a request with no method around it.
+#
+# ALIASES. `AsyncBaseClient` under another name (`from ... import AsyncBaseClient as _T`, `_T = AsyncBaseClient`),
+# or another thing under its name (`import Evil as AsyncBaseClient`, `AsyncBaseClient = _Evil`), in any module: every
+# client-module test keys on the name.
+#
+# EXEMPTION: `# headgate-verify: allow client-method-shape -- <reason>` on the `def` line (a streamed download, for
+# one, is an `async with self.stream(...)` block, not one statement).
+#
+# PORTED from the source rule of the same name, with these changes:
+#   * `expect=` (R3) must be a bare UPPER_CASE module-level name (or `nothing`/`as_bytes`); the source accepted
+#     `decoder(...)` and a one-argument `Expect(...)` chain inline, and left the reader to client-method-returns;
+#   * the JSON-RPC envelope leg (one provider's shape: a leg that built one `MCPToolCall` and forwarded it) is gone,
+#     so an envelope leg no longer conforms;
+#   * a walk (e) takes paginate's own keywords and needs `limit=` as well as `pages=` (the source required neither
+#     present; the spec passes a `PageLimit`), and accepts `idempotency_key=`, which headgate's paginate takes;
+#     `pages=`/`limit=` are refused on a verb, which takes neither;
+#   * a writer may be public (`body=NEW_ORDER(order)`, as headgate's examples and the spec write it), not only
+#     `_`-prefixed, and `body=` is exempt from the constructor clause, which a public writer's name would trip;
+#   * the collector must be typed `Unpack[<X>Params]`, and a public method may not take `params` as a plain argument;
+#   * the class clause names headgate 0.7.0's request methods instead of an in-tree base's old names (`_send`,
+#     `_fetch`, `_status_error`, `_client_error` mean nothing to headgate, so defining one is a private helper).
+#
+# KNOWN GAPS, disclosed rather than hidden:
+#   * A leg inherited from a `_` base in the same module is not found (the lookup reads the method's own class), so a
+#     delegate to one is reported, not passed.
+#   * The path argument's provenance is not checked beyond the await/public-self/comprehension clauses; the path rules
+#     own it.
+#   * A capitalised global handed to a delegate reads as a payload type; the rule cannot tell a class from a
+#     capitalised constant. Likewise it does not check that a module-level `expect=` name IS a reader, or that an
+#     UPPER_CASE `deadline=`/`timeout=`/`pages=`/`limit=`/writer name is a module constant.
+#   * A second positional argument to a verb is not read: the verbs take the path alone positionally.
+#
+# ast-grep traps this rule is written around: nthChild counts COMMENTS unless given `ofRule`; `has:` iterates
+# punctuation (`(`, `,`, `)`), so a whitelist over children filters on text first; a metavariable captured OUTSIDE a
+# `not:` is invisible inside it, so every parameter, binding and leg lookup captures and uses its metavariable inside
+# the same `not:`, and `all:` fixes the order (capture first); a util needs a positive matcher (a `kind`), and a
+# relational rule alone is not one; `stopBy: {kind: ...}` is inclusive.
+id: client-method-shape
+language: python
+severity: error
+message: a public client method is one forward of the request it was handed, or exempted with a reason
+note: >-
+  One public method is one endpoint: a single `return await self.<verb>(path, params=params, expect=READER)`
+  forwarding its parameters, its reader a module-level UPPER_CASE name; a paged GET is a sync def returning
+  `self.paginate(path, expect=READER, pages=PAGES, limit=MAX_PAGES)`. Composition, deciding what an answer means and
+  building the request belong above the client.
+utils:
+  # A docstring: ONE string with no interpolation. `"doc", await self.get(...)` is a tuple, not a docstring.
+  doc: {kind: expression_statement, has: {nthChild: 1, kind: string, not: {has: {stopBy: end, kind: interpolation}}}, not: {has: {nthChild: 2}}}
+  # A module that defines a class based on AsyncBaseClient: a client module (see SCOPE).
+  client-module:
+    kind: module
+    has:
+      stopBy: end
+      kind: class_definition
+      has:
+        field: superclasses
+        has: {any: [{kind: identifier, regex: '^AsyncBaseClient$'}, {kind: attribute, regex: '\.AsyncBaseClient$'}]}
+  transport-class:
+    kind: class_definition
+    inside: {kind: module, stopBy: end, matches: client-module}
+    has:
+      field: superclasses
+      has:
+        any:
+          - {kind: identifier, regex: '^(_\w+|\w*Client)$'}
+          - {kind: attribute, regex: 'Client$'}
+          - all:
+              - {kind: identifier, pattern: $LOCALBASE}
+              - inside: {kind: module, stopBy: end, has: {kind: class_definition, has: {field: name, pattern: $LOCALBASE}}}
+  class-body: {kind: block, inside: {matches: transport-class}}
+  property-decorated: {kind: decorated_definition, has: {kind: decorator, regex: '^@property$'}}
+  public-method:
+    kind: function_definition
+    all:
+      - has: {field: name, regex: '^[^_]'}
+      - not: {has: {field: name, regex: '^aclose$'}}
+      - any:
+          - inside: {matches: class-body}
+          - {inside: {kind: decorated_definition, not: {matches: property-decorated}, inside: {matches: class-body}}}
+  # --- parameters ----------------------------------------------------------------------------------
+  # An identifier in a parameter-NAME position (not a type annotation, not a default value).
+  param-name:
+    any:
+      - matches: request-param-name
+      - {kind: identifier, inside: {field: name, any: [{kind: default_parameter}, {kind: typed_default_parameter}]}}
+  # The same, for a parameter a REQUEST is forwarded from: its default, if any, is None. A module global as the
+  # default (`params: dict = _DEFAULTS`) is a request built at import time.
+  request-param-name:
+    any:
+      - {kind: identifier, inside: {kind: parameters}}
+      - {kind: identifier, inside: {kind: typed_parameter}}
+      - {kind: identifier, inside: {field: name, kind: default_parameter, has: {field: value, kind: none}}}
+      - {kind: identifier, inside: {field: name, kind: typed_default_parameter, has: {field: value, kind: none}}}
+      - {kind: identifier, inside: {kind: dictionary_splat_pattern}}
+  # An identifier naming a parameter of an enclosing function. The capture and its use sit in one rule, so this
+  # works under `not:`.
+  param-ident:
+    all:
+      - {kind: identifier, pattern: $PNAME}
+      - inside:
+          kind: function_definition
+          stopBy: end
+          has: {field: parameters, has: {stopBy: end, matches: param-name, pattern: $PNAME}}
+  request-param:
+    all:
+      - {kind: identifier, pattern: $RNAME}
+      - inside:
+          kind: function_definition
+          stopBy: end
+          has: {field: parameters, has: {stopBy: end, matches: request-param-name, pattern: $RNAME}}
+  # A plain (not `**`) parameter named `params`, directly in a parameter list.
+  plain-params-param:
+    any:
+      - {kind: identifier, regex: '^params$'}
+      - {kind: typed_parameter, has: {nthChild: 1, kind: identifier, regex: '^params$'}}
+      - {kind: default_parameter, has: {field: name, regex: '^params$'}}
+      - {kind: typed_default_parameter, has: {field: name, regex: '^params$'}}
+  # --- the reader (R3) -----------------------------------------------------------------------------
+  # A statement directly in the module binding $READER: an assignment (annotated or not) or an import.
+  module-binding:
+    any:
+      - kind: expression_statement
+        inside: {kind: module}
+        has: {nthChild: 1, kind: assignment, has: {field: left, kind: identifier, pattern: $READER}}
+      - kind: import_from_statement
+        inside: {kind: module}
+        has:
+          any:
+            - {kind: dotted_name, follows: {stopBy: end, regex: '^import$'}, has: {kind: identifier, pattern: $READER}}
+            - {kind: aliased_import, has: {field: alias, pattern: $READER}}
+  ok-reader:
+    any:
+      - {kind: identifier, regex: '^(nothing|as_bytes)$'}
+      - all:
+          - {kind: identifier, regex: '^_?[A-Z][A-Z0-9_]*$', pattern: $READER}
+          - inside: {kind: module, stopBy: end, has: {matches: module-binding}}
+  bad-expect:
+    kind: keyword_argument
+    has: {field: name, regex: '^expect$'}
+    not: {has: {field: value, matches: ok-reader}}
+  # --- the forward call ----------------------------------------------------------------------------
+  ctor-call:
+    kind: call
+    has: {field: function, any: [{kind: identifier, regex: '^[A-Z]'}, {kind: attribute, regex: '\.[A-Z]\w*$'}]}
+  # `to_builtins(<x>)` or `to_builtins(<x>, drop_none=True)`: the argument is checked by the caller.
+  to-builtins-shape:
+    kind: call
+    all:
+      - has: {field: function, kind: identifier, regex: '^to_builtins$'}
+      - any:
+          - not: {has: {field: arguments, has: {nthChild: 2}}}
+          - all:
+              - has: {field: arguments, has: {nthChild: 2, kind: keyword_argument, regex: '^drop_none\s*=\s*True$'}}
+              - not: {has: {field: arguments, has: {nthChild: 3}}}
+  to-builtins-of-param:
+    matches: to-builtins-shape
+    has: {field: arguments, has: {nthChild: 1, matches: request-param}}
+  # `<WRITER>(<x>)`: a module's request-body writer (`NEW_ORDER = encoder(NewOrder)`) applied to ONE argument, which
+  # the caller checks is a request parameter.
+  writer-shape:
+    kind: call
+    all:
+      - has: {field: function, kind: identifier, regex: '^_?[A-Z][A-Z0-9_]*$'}
+      - not: {has: {field: arguments, has: {nthChild: {position: 2, ofRule: {not: {kind: comment}}}}}}
+  writer-of-param:
+    matches: writer-shape
+    has: {field: arguments, has: {kind: identifier, matches: request-param}}
+  helper-of-params:
+    kind: call
+    all:
+      - has: {field: function, kind: attribute, regex: '^self\._\w+$'}
+      - not: {has: {field: arguments, has: {regex: '^[^(),]', not: {any: [{kind: comment}, {matches: request-param}]}}}}
+  # A request keyword that is BUILT rather than forwarded.
+  built-keyword:
+    kind: keyword_argument
+    any:
+      - all:
+          - has: {field: name, regex: '^params$'}
+          - not: {has: {field: value, regex: '^params$', matches: request-param}}
+      - all:
+          - has: {field: name, regex: '^(data|content|files|idempotency_key)$'}
+          - not: {has: {field: value, any: [{matches: request-param}, {matches: to-builtins-of-param}]}}
+      - all:
+          - has: {field: name, regex: '^headers$'}
+          - not: {has: {field: value, any: [{matches: request-param}, {matches: helper-of-params}]}}
+      - all:
+          - has: {field: name, regex: '^json$'}
+          - not: {has: {field: value, matches: request-param}}
+      - all:
+          - has: {field: name, regex: '^body$'}
+          - not: {has: {field: value, matches: writer-of-param}}
+  bad-forward-args-common:
+    kind: call
+    has:
+      field: arguments
+      any:
+        - has: {stopBy: end, kind: await}
+        - has: {stopBy: end, kind: attribute, regex: '^self\.[A-Za-z]'}
+        - has: {stopBy: end, any: [{kind: list_comprehension}, {kind: set_comprehension}, {kind: dictionary_comprehension}, {kind: generator_expression}, {kind: lambda}]}
+        - has: {stopBy: end, kind: named_expression}
+        - has: {stopBy: end, kind: dictionary}
+        - has: {any: [{kind: dictionary_splat}, {kind: list_splat}]}
+        # A constructor in a keyword value; `body=` is a writer, checked by built-keyword.
+        - has: {kind: keyword_argument, not: {has: {field: name, regex: '^body$'}}, has: {field: value, any: [{matches: ctor-call}, {has: {stopBy: end, matches: ctor-call}}]}}
+        - has: {matches: built-keyword}
+        - has: {matches: bad-expect}
+        # The transport knobs are a literal or a parameter.
+        - has: {kind: keyword_argument, all: [{has: {field: name, regex: '^(retry|follow_redirects|cache_ttl)$'}}, {not: {has: {field: value, any: [{kind: integer}, {kind: float}, {kind: 'true'}, {kind: 'false'}, {kind: 'none'}, {matches: param-ident}]}}}]}
+        # deadline= may also be a bare UPPER_CASE name, a module constant fixed at import.
+        - has: {kind: keyword_argument, all: [{has: {field: name, regex: '^deadline$'}}, {not: {has: {field: value, any: [{kind: integer}, {kind: float}, {kind: 'true'}, {kind: 'false'}, {kind: 'none'}, {matches: param-ident}, {kind: identifier, regex: '^_?[A-Z][A-Z0-9_]*$'}]}}}]}
+        # timeout= is a headgate `Timeouts`, never a number or None: a parameter or a bare UPPER_CASE name.
+        - has: {kind: keyword_argument, all: [{has: {field: name, regex: '^timeout$'}}, {not: {has: {field: value, any: [{matches: param-ident}, {kind: identifier, regex: '^_?[A-Z][A-Z0-9_]*$'}]}}}]}
+  # Only the keywords headgate 0.7.0's verbs take.
+  bad-verb-args:
+    any:
+      - matches: bad-forward-args-common
+      - has: {field: arguments, has: {kind: keyword_argument, has: {field: name, not: {regex: '^(params|body|json|data|content|files|headers|idempotency_key|expect|retry|timeout|deadline|follow_redirects|cache_ttl)$'}}}}
+  verb-call: {kind: call, has: {field: function, kind: attribute, regex: '^self\.(get|post|put|patch|delete|head)$'}}
+  # A walk: `return self.paginate(...)`, not awaited, in a SYNC def (an async one would hand back a coroutine). Only
+  # paginate's own keywords, no body (pages are GETs), and the pager and page budget module-level names.
+  paginate-stmt:
+    kind: return_statement
+    inside: {kind: block, inside: {kind: function_definition, not: {regex: '^async\s'}}}
+    has:
+      nthChild: 1
+      kind: call
+      all:
+        - has: {field: function, kind: attribute, regex: '^self\.paginate$'}
+        - not: {matches: bad-forward-args-common}
+        - not: {has: {field: arguments, has: {kind: keyword_argument, has: {field: name, not: {regex: '^(params|headers|idempotency_key|timeout|deadline|follow_redirects|cache_ttl|expect|retry|pages|limit)$'}}}}}
+        - has: {field: arguments, has: {kind: keyword_argument, has: {field: name, regex: '^pages$'}}}
+        - has: {field: arguments, has: {kind: keyword_argument, has: {field: name, regex: '^limit$'}}}
+        - not: {has: {field: arguments, has: {kind: keyword_argument, all: [{has: {field: name, regex: '^(pages|limit)$'}}, {not: {has: {field: value, kind: identifier, regex: '^_?[A-Z][A-Z0-9_]*$'}}}]}}}
+  forward-call:
+    matches: verb-call
+    not: {matches: bad-verb-args}
+  # `return await <forward>` or a void `await <forward>`. A tuple `return a, b` is an expression_list, so the return
+  # form needs no length guard; a tuple expression statement does.
+  forward-stmt:
+    any:
+      - {kind: return_statement, has: {nthChild: 1, kind: await, has: {nthChild: 1, matches: forward-call}}}
+      - {kind: expression_statement, has: {nthChild: 1, kind: await, has: {nthChild: 1, matches: forward-call}}, not: {has: {nthChild: 2}}}
+  # A block that is one forward, after an optional docstring.
+  forward-block:
+    kind: block
+    any:
+      - all:
+          - has: {nthChild: {position: 1, ofRule: &stmt {not: {kind: comment}}}, matches: forward-stmt}
+          - not: {has: {nthChild: {position: 2, ofRule: *stmt}}}
+      - all:
+          - has: {nthChild: {position: 1, ofRule: *stmt}, matches: doc}
+          - has: {nthChild: {position: 2, ofRule: *stmt}, matches: forward-stmt}
+          - not: {has: {nthChild: {position: 3, ofRule: *stmt}}}
+  # --- the delegates -------------------------------------------------------------------------------
+  ok-delegate-value:
+    any:
+      - {kind: string}
+      - {kind: identifier, regex: '^[A-Z]\w*[a-z]\w*$'}
+      - {matches: request-param}
+      - {kind: 'true'}
+      - {kind: 'false'}
+  ok-delegate-arg:
+    any:
+      - {kind: comment}
+      - {matches: ok-delegate-value}
+      - {kind: dictionary_splat, has: {nthChild: 1, matches: request-param}}
+      - {kind: keyword_argument, has: {field: value, matches: ok-delegate-value}}
+  # Each argument is on the whitelist; nothing inside one (a string's interpolation) awaits, calls or reads a public
+  # attribute.
+  ok-delegate-args:
+    kind: call
+    has:
+      field: arguments
+      all:
+        - not: {has: {regex: '^[^(),]', not: {matches: ok-delegate-arg}}}
+        - not: {has: {stopBy: end, any: [{kind: await}, {kind: call}, {kind: attribute}]}}
+  method-delegate-stmt:
+    kind: return_statement
+    all:
+      - has:
+          nthChild: 1
+          kind: await
+          has:
+            nthChild: 1
+            kind: call
+            all:
+              - has: {field: function, kind: attribute, all: [{has: {field: object, regex: '^self$'}}, {has: {field: attribute, regex: '^_', pattern: $LEG}}]}
+              - matches: ok-delegate-args
+      - inside:
+          kind: class_definition
+          stopBy: end
+          has:
+            field: body
+            has:
+              kind: function_definition
+              all:
+                - has: {field: name, pattern: $LEG}
+                - has: {field: body, matches: forward-block}
+  module-forward-stmt:
+    kind: return_statement
+    has:
+      nthChild: 1
+      kind: await
+      has:
+        nthChild: 1
+        kind: call
+        all:
+          - has: {field: function, kind: attribute, all: [{has: {field: object, kind: identifier, pattern: $RECV}}, {has: {field: attribute, regex: '^(get|post|put|patch|delete|head)$'}}]}
+          - not: {matches: bad-verb-args}
+  module-leg-block:
+    kind: block
+    any:
+      - all:
+          - has: {nthChild: {position: 1, ofRule: *stmt}, matches: module-forward-stmt}
+          - not: {has: {nthChild: {position: 2, ofRule: *stmt}}}
+      - all:
+          - has: {nthChild: {position: 1, ofRule: *stmt}, matches: doc}
+          - has: {nthChild: {position: 2, ofRule: *stmt}, matches: module-forward-stmt}
+          - not: {has: {nthChild: {position: 3, ofRule: *stmt}}}
+  module-delegate-stmt:
+    kind: return_statement
+    all:
+      - has:
+          nthChild: 1
+          kind: await
+          has:
+            nthChild: 1
+            kind: call
+            all:
+              - has: {field: function, kind: identifier, regex: '^_', pattern: $FN}
+              - has: {field: arguments, has: {nthChild: 1, kind: identifier, regex: '^self$'}}
+              - matches: ok-delegate-args
+      - inside:
+          kind: module
+          stopBy: end
+          has:
+            kind: function_definition
+            all:
+              - has: {field: name, pattern: $FN}
+              - has: {field: parameters, has: {nthChild: 1, kind: typed_parameter, has: {nthChild: 1, kind: identifier, pattern: $RECV}}}
+              - has: {field: body, matches: module-leg-block}
+  one-stmt: {any: [{matches: forward-stmt}, {matches: method-delegate-stmt}, {matches: module-delegate-stmt}, {matches: paginate-stmt}]}
+  conforming-body:
+    kind: block
+    any:
+      - all:
+          - has: {nthChild: {position: 1, ofRule: *stmt}, matches: one-stmt}
+          - not: {has: {nthChild: {position: 2, ofRule: *stmt}}}
+      - all:
+          - has: {nthChild: {position: 1, ofRule: *stmt}, matches: doc}
+          - has: {nthChild: {position: 2, ofRule: *stmt}, matches: one-stmt}
+          - not: {has: {nthChild: {position: 3, ofRule: *stmt}}}
+  # --- the reports ---------------------------------------------------------------------------------
+  bad-public-method:
+    matches: public-method
+    any:
+      - inside: {kind: decorated_definition}
+      - not: {has: {field: body, matches: conforming-body}}
+      - has: {field: parameters, has: {matches: plain-params-param}}
+  bad-collector:
+    kind: function_definition
+    has:
+      field: parameters
+      has:
+        any:
+          - kind: typed_parameter
+            all:
+              - has: {kind: dictionary_splat_pattern, not: {has: {kind: identifier, regex: '^params$'}}}
+              - has: {field: type, regex: '\bUnpack\['}
+          - kind: typed_parameter
+            all:
+              - has: {kind: dictionary_splat_pattern, has: {kind: identifier, regex: '^params$'}}
+              - not: {has: {field: type, regex: '^Unpack\[\s*[\w.]*Params\s*\]$'}}
+          - {kind: dictionary_splat_pattern, has: {kind: identifier, regex: '^params$'}}
+  bad-property:
+    kind: function_definition
+    inside: {matches: property-decorated, inside: {matches: class-body}}
+    any:
+      - regex: '^async\s'
+      - has: {field: body, has: {stopBy: end, kind: call, has: {field: function, regex: '^self\.'}}}
+      # `return self._get_x`: an uncalled method handed out under a public name.
+      - has:
+          field: body
+          has:
+            stopBy: end
+            kind: attribute
+            all:
+              - has: {field: object, regex: '^self$'}
+              - has: {field: attribute, pattern: $METH}
+              - inside: {kind: class_definition, stopBy: end, has: {field: body, has: {any: [{kind: function_definition, has: {field: name, pattern: $METH}}, {kind: decorated_definition, has: {field: definition, has: {field: name, pattern: $METH}}}]}}}
+  plain-base:
+    any:
+      - {kind: comment}
+      - {kind: identifier, regex: '^AsyncBaseClient$'}
+      - all:
+          - {kind: identifier, regex: '^_', pattern: $PRIVATEBASE}
+          - inside: {kind: module, stopBy: end, has: {kind: class_definition, has: {field: name, pattern: $PRIVATEBASE}}}
+  bad-class:
+    matches: transport-class
+    any:
+      - has: {field: superclasses, has: {regex: '^[^(),]', not: {matches: plain-base}}}
+      # One base: a second (a mixin, in either order) would carry methods this rule never reads.
+      - has: {field: superclasses, has: {nthChild: {position: 2, ofRule: {not: {kind: comment}}}}}
+      - inside: {kind: decorated_definition}
+      # Overriding headgate's request machinery reshapes every call behind the one-statement bodies.
+      - has: {field: body, has: {any: [{kind: function_definition}, {kind: decorated_definition}], has: {stopBy: end, kind: identifier, inside: {field: name, kind: function_definition}, regex: '^_(request|streamed|prepare|deadline_of|retry_of|stamp_idempotency_key|reported|deadline|exchange|sent|network_failure|breaker_for|breaker_listener|dispatch|site|unsent_site)$'}}}
+      # A name bound twice: the leg lookup reads the first, the runtime runs the last.
+      - has: {field: body, has: {all: [{matches: class-binding}, {follows: {stopBy: end, matches: class-binding}}]}}
+      # Any statement directly in the body that is not on the ok-class-statement list.
+      - has: {field: body, has: {not: {matches: ok-class-statement}}}
+  ok-class-statement:
+    any:
+      - {kind: comment}
+      # A method; of the dunders only __init__, __aenter__ and __aexit__ (`__getattr__` could synthesize endpoints).
+      - {kind: function_definition, not: {has: {field: name, regex: '^__', not: {regex: '^__(init|aenter|aexit)__$'}}}}
+      - {kind: decorated_definition, has: {field: definition, kind: function_definition, not: {has: {field: name, regex: '^__'}}}}
+      - {kind: pass_statement}
+      - {matches: doc}
+      # A `_` name bound to an UPPER_CASE name (`_BASE: ClassVar[str] = _PROD_BASE`), or annotated only: not a
+      # literal (a host in a ClassVar), not a lowercase rebind (`_leg = _evil`), not a chained assignment.
+      - kind: expression_statement
+        has: {nthChild: 1, kind: assignment, has: {field: left, kind: identifier, regex: '^_'}, not: {has: {field: right, not: {kind: identifier, regex: '^_?[A-Z][A-Z0-9_]*$'}}}}
+  # A statement in a class or module body binding $DUP: a function, a decorated function, an assignment.
+  class-binding:
+    any:
+      - {kind: function_definition, has: {field: name, pattern: $DUP}}
+      - {kind: decorated_definition, has: {field: definition, has: {field: name, pattern: $DUP}}}
+      - {kind: expression_statement, has: {nthChild: 1, kind: assignment, has: {field: left, kind: identifier, pattern: $DUP}}}
+  # What a parameter default may not be, at any depth: a call, a collection, a lambda, a comprehension. That is where
+  # a request could be built, once, at import time.
+  built-value:
+    any:
+      - {kind: call}
+      - {kind: dictionary}
+      - {kind: list}
+      - {kind: set}
+      - {kind: lambda}
+      - {kind: list_comprehension}
+      - {kind: dictionary_comprehension}
+      - {kind: set_comprehension}
+      - {kind: generator_expression}
+  built-default:
+    any: [{kind: default_parameter}, {kind: typed_default_parameter}]
+    has: {field: value, any: [{matches: built-value}, {has: {stopBy: end, matches: built-value}}]}
+rule:
+  any:
+    - matches: bad-public-method
+    - matches: bad-collector
+    - matches: bad-property
+    - matches: bad-class
+    - {kind: function_definition, inside: {kind: module, stopBy: end, matches: client-module}, has: {field: parameters, has: {matches: built-default}}}
+    # A module function bound twice in a client module (the module leg lookup reads the first).
+    - {kind: function_definition, inside: {kind: module, matches: client-module}, all: [{matches: class-binding}, {follows: {stopBy: end, matches: class-binding}}]}
+    # AsyncBaseClient under another name, or another thing under its name: every client-module test keys on it by
+    # name. Either side of an aliased import (`AsyncBaseClient as _T`, `_Evil as AsyncBaseClient`) or of an
+    # assignment (`_T = AsyncBaseClient`, `AsyncBaseClient = _Evil`).
+    - {kind: aliased_import, has: {regex: 'AsyncBaseClient$'}}
+    - {kind: assignment, has: {regex: '^(\w+\.)*AsyncBaseClient$'}}

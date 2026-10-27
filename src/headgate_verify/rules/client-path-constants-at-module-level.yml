@@ -1,0 +1,51 @@
+# A named path constant is MODULE-level, never a class attribute. A class attribute puts transport detail in the
+# client's public attribute surface; a module constant does everything it does, including being importable by a test.
+#
+# Scope: client.py.
+#
+# Reported: a plain assignment, directly in a class body (any class, nested or decorated or defined in a function),
+# whose FIRST target is a name holding PATH, TEMPLATE, ENDPOINT, URL or ROUTE in any case, and whose value is a str
+# literal: a plain, raw or u-prefixed string, an implicit concatenation of them, parenthesised or not, at the end of a
+# chain (`X_PATH = A = "..."`). Not reported: an ANNOTATED class attribute (`_PATH: ClassVar[str] = "..."`), a target
+# that is not the first of a chain, a tuple target, an f-, t- or bytes value, and an assignment under an `if` in the
+# class body.
+#
+# client-method-shape already reports a literal class attribute in a TRANSPORT class; this rule is the residue for
+# every other class in client.py, and the pathy-name ban for transports too.
+#
+# PORTED unchanged from the source rule of the same name, but for its scope (a package's client.py).
+id: client-path-constants-at-module-level
+language: python
+severity: error
+message: a path constant is declared on the class; move it to module level
+note: >-
+  Module level is where path constants live, and it keeps transport detail out of the client's public attribute
+  surface.
+files:
+  - client.py
+utils:
+  pathy-target:
+    any:
+      - {kind: identifier, regex: '(?i)(PATH|TEMPLATE|ENDPOINT|URL|ROUTE)'}
+      # `(X_PATH) = ...` parses as a one-element tuple_pattern; Python's AST reads it as the name
+      - {kind: tuple_pattern, not: {regex: ','}, has: {matches: pathy-target}}
+      - {kind: parenthesized_expression, has: {matches: pathy-target}}
+  plain-str:
+    any:
+      - kind: string
+        has: {kind: string_start, not: {regex: '[fFtTbB]'}}
+      - kind: concatenated_string
+        not: {has: {kind: string, has: {kind: string_start, regex: '[fFtTbB]'}}}
+      - {kind: parenthesized_expression, has: {matches: plain-str}}
+  # what a (possibly chained) assignment finally binds
+  bound-str:
+    any:
+      - matches: plain-str
+      - {kind: assignment, has: {field: right, matches: bound-str}}
+rule:
+  kind: assignment
+  inside: {kind: expression_statement, inside: {kind: block, inside: {kind: class_definition}}}
+  all:
+    - not: {has: {field: type, regex: '.'}}
+    - has: {field: left, matches: pathy-target}
+    - has: {field: right, matches: bound-str}

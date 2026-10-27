@@ -1,0 +1,285 @@
+# The client-method return type: it says what the call returns, and is never a raw Response.
+#
+# SCOPE. Every module of the package. Reports:
+#
+# 1. ANY function whose return annotation names `Response` as a whole word (`httpx2.Response`, a bare `Response`,
+#    quoted or wrapped: `Response | None`, `Awaitable[Response]`). A client that hands back a response is raw mode
+#    again. Exempt by NAME, because httpx2 or headgate dictates their signatures: `handle_async_request` (a
+#    transport), `async_auth_flow` and `auth_flow` (an httpx2 auth flow) and `mint_flow` (headgate's
+#    `CachedTokenAuth` hook). `BlsResponse` and `QuoteResponseEnvelope` are models: `Response` is not a whole word in
+#    them.
+#
+# 2. A PUBLIC METHOD of a transport class in a client module, defined exactly as in client-method-shape. Decorated
+#    and sync methods are read too. It is reported when ANY of these holds:
+#      * it has no return annotation, or the annotation is QUOTED;
+#      * `-> None` if and only if the call reads nothing, in both directions, reading the method's own body: a
+#        `-> None` method declares `expect=nothing` (or calls `head()` with no `expect=`, which reads `nothing`) and
+#        no other `expect=`; a method whose body reads nothing is `-> None`;
+#      * an `expect=` that is not a HOUSE READER:
+#          - `nothing` or `as_bytes`;
+#          - a DECODED READER: `decoder(...)` / `<module>.decoder(...)`; a module name bound to a `decoder(...)` call;
+#            or a `_`-prefixed module-level function whose FIRST parameter is typed `httpx2.Response` or
+#            `httpx.Response`;
+#          - a documented-answer CHAIN: a root `Expect(<ok>)` or `Expect(ok=<ok>)` with exactly one argument, `<ok>`
+#            being `as_bytes` or a decoded reader (never `nothing`), then zero or more `.on(<status>, <answer>)`,
+#            each with exactly two arguments, `<status>` an int literal or an `HTTPStatus.<NAME>` member and
+#            `<answer>` a decoded reader or `nothing`;
+#          - an UPPER_CASE name bound at module level to any of the above, or imported (whose type this rule cannot
+#            see, so it is taken on trust).
+#        So `expect=nothing` cannot arrive through an alias (`NOTHING = nothing`), nor `as_bytes` (`RAW = as_bytes`).
+#        REJECTED although `headgate.Expect` would accept them: the answers-table forms `Expect(ok, {...})` and
+#        `Expect(ok, answers=...)`, `Expect(nothing)`, `event_stream`, a status that is a name or a string, a lambda
+#        or a `self` method as a reader;
+#      * the reader is `as_bytes`, bare or as a chain's root, inline or through a module name, and the return's FIRST
+#        union arm is not `bytes` (`^bytes(\s*\|\s*[A-Z]\w*)*(\s*\|\s*None)?$`);
+#      * the annotation, or the type a `decoder(...)` in the body decodes into, contains `Any`, `object`, `Optional`,
+#        a bare `dict` (`dict`, `list[dict]`), or a primitive-valued map (`dict`/`Mapping`/`MutableMapping` of
+#        `str`/`int`/`float`/`bool`/`bytes`, at any depth); or the annotation contains `None` other than as the whole
+#        annotation, unless its reader declares a `nothing` answer (`Expect(FILING).on(HTTPStatus.NOT_FOUND,
+#        nothing)`, inline or through a module name), which is what returns that `None`; and a reader that declares
+#        one has a `None` arm.
+#
+# 3. In a CLIENT MODULE: a module-level alias of such a type (`Payload = Any`, `Payload = typing.Any`,
+#    `type Blob = dict[str, Any]`, `Maybe = A | None`); and an untyped `decoder(...)` anywhere the public method's own
+#    report does not cover (a private leg, and, since readers are declared at module level, a module-level
+#    `READER = decoder(Any)` or an answer decoding into a bare dict).
+#
+# EXEMPTION: `# headgate-verify: allow client-method-returns -- <reason>` on the `def` line.
+#
+# PORTED from the source rule of the same name, with these changes:
+#   * readers are module-level values (R3), so an UPPER_CASE `expect=` name is followed to the module-level value it
+#     names, for the house-reader, `as_bytes` and `None` checks; an imported one is taken on trust;
+#   * a chain's status may be an `HTTPStatus.<NAME>` member as well as an int literal, and an answer may be `nothing`
+#     (spec: a documented 404 declared as `Expect(READER).on(HTTPStatus.NOT_FOUND, nothing)`), so `T | None` is
+#     allowed exactly when the reader declares such an answer;
+#   * `head()` with no `expect=` reads `nothing` (headgate 0.6.0), so it is a void;
+#   * the `fetch_`/`get_` naming clause, and with it the `bytes`/`str` module-alias clause that served it, is dropped:
+#     the naming check owns method names, and a read is `get_<path>` whatever it returns;
+#   * the Response exemption adds `auth_flow` and headgate's `mint_flow` hook.
+#
+# KNOWN GAPS, disclosed rather than hidden:
+#   * Two DIFFERENT decoder aliases, or two different reader functions, in one chain are rejected, loudly: the
+#     metavariable binds once per chain (`Expect(_A).on(404, _NOT_FOUND)`). Write the second as `decoder(...)` or
+#     share one alias.
+#   * The Response exemption is by function NAME, so a function named `async_auth_flow` that is not an auth flow could
+#     return a response.
+#   * The None/expect clauses read the method's own body, not a leg's: a delegate's return is its leg's payload type,
+#     and this rule does not relate it to the leg's `expect=`.
+#   * An imported reader's type is not read, and a module name is followed one step (a name bound to another name is
+#     not a house reader).
+#
+# ast-grep traps: a metavariable captured outside a `not:` is invisible inside it, so the alias and reader lookups
+# capture and use their metavariable inside the same `not:`; recursive utils work (`expect-chain` refers to itself);
+# Rust regex has no lookahead, so a bare `dict` is `dict` followed by something other than `[`.
+id: client-method-returns
+language: python
+severity: error
+message: a public client method's return type says what the call returns, and never a raw Response
+note: >-
+  `-> None` exactly when the call reads `nothing`; `bytes` first when it reads `as_bytes`; otherwise the decoded model,
+  with `| None` only when the reader declares a `nothing` answer. Never Optional, Any, object, a bare or
+  primitive-valued dict, or a Response.
+utils:
+  client-module:
+    kind: module
+    has:
+      stopBy: end
+      kind: class_definition
+      has:
+        field: superclasses
+        has: {any: [{kind: identifier, regex: '^AsyncBaseClient$'}, {kind: attribute, regex: '\.AsyncBaseClient$'}]}
+  transport-class:
+    kind: class_definition
+    inside: {kind: module, stopBy: end, matches: client-module}
+    has:
+      field: superclasses
+      has:
+        any:
+          - {kind: identifier, regex: '^(_\w+|\w*Client)$'}
+          - {kind: attribute, regex: 'Client$'}
+          - all:
+              - {kind: identifier, pattern: $LOCALBASE}
+              - inside: {kind: module, stopBy: end, has: {kind: class_definition, has: {field: name, pattern: $LOCALBASE}}}
+  class-body: {kind: block, inside: {matches: transport-class}}
+  property-decorated: {kind: decorated_definition, has: {kind: decorator, regex: '^@property$'}}
+  public-method:
+    kind: function_definition
+    all:
+      - has: {field: name, regex: '^[^_]'}
+      - not: {has: {field: name, regex: '^aclose$'}}
+      - any:
+          - inside: {matches: class-body}
+          - {inside: {kind: decorated_definition, not: {matches: property-decorated}, inside: {matches: class-body}}}
+  expect-kw: {kind: keyword_argument, has: {field: name, regex: '^expect$'}}
+  expect-nothing: {matches: expect-kw, has: {field: value, kind: identifier, regex: '^nothing$'}}
+  # `self.head(...)` with no `expect=`: headgate reads `nothing`.
+  bare-head:
+    kind: call
+    has: {field: function, kind: attribute, regex: '^self\.head$'}
+    not: {has: {field: arguments, has: {matches: expect-kw}}}
+  reads-nothing: {any: [{matches: expect-nothing}, {matches: bare-head}]}
+  # A module-level statement binding $NAME to a value matching `module-value` (see the two users below).
+  decoder-call: {kind: call, has: {field: function, regex: '^(\w+\.)?decoder$'}}
+  # A hand-written reader: a `_` function at module level whose first parameter is the response.
+  reader-fn:
+    all:
+      - {kind: identifier, regex: '^_', pattern: $READER}
+      - inside:
+          kind: module
+          stopBy: end
+          has:
+            kind: function_definition
+            all:
+              - has: {field: name, pattern: $READER}
+              - has: {field: parameters, has: {nthChild: 1, kind: typed_parameter, has: {field: type, regex: '^(httpx2?\.)?Response$'}}}
+  # A reader that decodes: `decoder(...)`, a module name bound to one, or a reader function.
+  decoded-reader:
+    any:
+      - matches: decoder-call
+      - matches: reader-fn
+      - all:
+          - {kind: identifier, pattern: $ALIAS}
+          - inside:
+              kind: module
+              stopBy: end
+              has: {kind: expression_statement, has: {kind: assignment, all: [{has: {field: left, pattern: $ALIAS}}, {has: {field: right, matches: decoder-call}}]}}
+  # What an Expect's success reader may be: `as_bytes` or a decoded reader, never `nothing` (a void has no answers).
+  expect-ok: {any: [{kind: identifier, regex: '^as_bytes$'}, {matches: decoded-reader}]}
+  # `Expect(<ok>)` or `Expect(ok=<ok>)`: exactly one argument.
+  expect-root:
+    kind: call
+    all:
+      - has: {field: function, kind: identifier, regex: '^Expect$'}
+      - has: {field: arguments, has: {nthChild: {position: 1, ofRule: {not: {kind: comment}}}, any: [{matches: expect-ok}, {kind: keyword_argument, all: [{has: {field: name, regex: '^ok$'}}, {has: {field: value, matches: expect-ok}}]}]}}
+      - not: {has: {field: arguments, has: {nthChild: {position: 2, ofRule: {not: {kind: comment}}}}}}
+  status-literal:
+    any:
+      - {kind: integer, not: {regex: '[jJ]$'}}
+      - {kind: attribute, regex: '^(\w+\.)*HTTPStatus\.[A-Z][A-Z0-9_]*$'}
+  # The documented-answer chain: the root, then `.on(<status>, <decoded reader or nothing>)` any number of times.
+  expect-chain:
+    kind: call
+    any:
+      - matches: expect-root
+      - all:
+          - has: {field: function, kind: attribute, all: [{has: {field: attribute, regex: '^on$'}}, {has: {field: object, matches: expect-chain}}]}
+          - has: {field: arguments, has: {nthChild: {position: 1, ofRule: {not: {kind: comment}}}, matches: status-literal}}
+          - has: {field: arguments, has: {nthChild: {position: 2, ofRule: {not: {kind: comment}}}, any: [{matches: decoded-reader}, {kind: identifier, regex: '^nothing$'}]}}
+          - not: {has: {field: arguments, has: {nthChild: {position: 3, ofRule: {not: {kind: comment}}}}}}
+  # `.on(<status>, nothing)`: an answer that returns None.
+  on-nothing:
+    kind: call
+    all:
+      - has: {field: function, kind: attribute, has: {field: attribute, regex: '^on$'}}
+      - has: {field: arguments, has: {nthChild: {position: 2, ofRule: {not: {kind: comment}}}, kind: identifier, regex: '^nothing$'}}
+  nothing-chain: {matches: expect-chain, any: [{matches: on-nothing}, {has: {stopBy: end, matches: on-nothing}}]}
+  bytes-root:
+    matches: expect-root
+    has: {field: arguments, has: {any: [{kind: identifier, regex: '^as_bytes$'}, {kind: keyword_argument, has: {field: value, kind: identifier, regex: '^as_bytes$'}}]}}
+  bytes-chain: {matches: expect-chain, any: [{matches: bytes-root}, {has: {stopBy: end, matches: bytes-root}}]}
+  # An UPPER_CASE name the module binds to a house reader, or imports.
+  module-reader:
+    all:
+      - {kind: identifier, regex: '^_?[A-Z][A-Z0-9_]*$', pattern: $NAME}
+      - inside:
+          kind: module
+          stopBy: end
+          has:
+            any:
+              - kind: expression_statement
+                has: {nthChild: 1, kind: assignment, all: [{has: {field: left, kind: identifier, pattern: $NAME}}, {has: {field: right, any: [{matches: decoder-call}, {matches: reader-fn}, {matches: expect-chain}]}}]}
+              - kind: import_from_statement
+                has:
+                  any:
+                    - {kind: dotted_name, follows: {stopBy: end, regex: '^import$'}, has: {kind: identifier, pattern: $NAME}}
+                    - {kind: aliased_import, has: {field: alias, pattern: $NAME}}
+  # An UPPER_CASE name the module binds to a value matching `nothing-chain` / `bytes-chain`.
+  module-nothing-chain:
+    all:
+      - {kind: identifier, pattern: $CHAIN}
+      - inside: {kind: module, stopBy: end, has: {kind: expression_statement, has: {nthChild: 1, kind: assignment, all: [{has: {field: left, kind: identifier, pattern: $CHAIN}}, {has: {field: right, matches: nothing-chain}}]}}}
+  module-bytes-chain:
+    all:
+      - {kind: identifier, pattern: $CHAIN}
+      - inside: {kind: module, stopBy: end, has: {kind: expression_statement, has: {nthChild: 1, kind: assignment, all: [{has: {field: left, kind: identifier, pattern: $CHAIN}}, {has: {field: right, matches: bytes-chain}}]}}}
+  house-reader:
+    any:
+      - {kind: identifier, regex: '^(nothing|as_bytes)$'}
+      - matches: decoded-reader
+      - matches: expect-chain
+      - matches: module-reader
+  # `expect=as_bytes`, bare, as the root of a chain, or a module name bound to such a chain.
+  expect-as-bytes:
+    matches: expect-kw
+    has:
+      field: value
+      any:
+        - {kind: identifier, regex: '^as_bytes$'}
+        - {matches: bytes-chain}
+        - {matches: module-bytes-chain}
+  # A method whose reader declares a `nothing` answer: its `| None` arm is that answer.
+  declares-none-answer:
+    kind: function_definition
+    has: {field: body, has: {stopBy: end, matches: expect-kw, has: {field: value, any: [{matches: nothing-chain}, {matches: module-nothing-chain}]}}}
+  annotated: {kind: function_definition, has: {field: return_type, kind: type}}
+  returns-none: {kind: function_definition, has: {field: return_type, regex: '^None$'}}
+  # The type bans, shared by the return annotation, a decoder's target and an alias's value.
+  bad-type-text:
+    any:
+      - regex: '\b(Any|object|Optional)\b'
+      - regex: '\bdict\b\s*([^\[\s]|$)'
+      - regex: '\b(dict|Mapping|MutableMapping)\[\s*[\w.]+\s*,\s*(str|int|float|bool|bytes)\s*\]'
+  none-arm: {kind: type, regex: '\bNone\b', not: {regex: '^None$'}}
+  # What a decoder decodes INTO is the return type too: `decoder(Any)` behind `-> Model` is an untyped decode.
+  untyped-decode: {matches: decoder-call, has: {field: arguments, has: {nthChild: {position: 1, ofRule: {not: {kind: comment}}}, matches: bad-type-text}}}
+  # A module alias would hide a type from the annotation checks: `Payload = Any`, `type Blob = dict[str, Any]`,
+  # `Maybe = A | None`.
+  alias-target:
+    any:
+      - matches: bad-type-text
+      - {kind: binary_operator, regex: '\bNone\b'}
+  # A module-level alias. Only type-shaped values are read (a name, a dotted name, a subscript, a union), so a string
+  # constant that happens to contain "Any" is not.
+  bad-alias:
+    any:
+      - {kind: type_alias_statement, has: {field: right, matches: alias-target}}
+      - kind: assignment
+        inside: {kind: expression_statement, inside: {kind: module}}
+        has: {field: right, any: [{kind: identifier}, {kind: attribute}, {kind: subscript}, {kind: binary_operator}], matches: alias-target}
+  bad-public-method:
+    matches: public-method
+    any:
+      - not: {matches: annotated}
+      - has: {field: return_type, has: {kind: string}}
+      - all:
+          - matches: returns-none
+          - any:
+              - not: {has: {field: body, has: {stopBy: end, matches: reads-nothing}}}
+              - has: {field: body, has: {stopBy: end, matches: expect-kw, not: {matches: expect-nothing}}}
+      - all:
+          - has: {field: body, has: {stopBy: end, matches: reads-nothing}}
+          - not: {matches: returns-none}
+      - has: {field: body, has: {stopBy: end, matches: expect-kw, not: {has: {field: value, matches: house-reader}}}}
+      - all:
+          - has: {field: body, has: {stopBy: end, matches: expect-as-bytes}}
+          - not: {has: {field: return_type, regex: '^bytes(\s*\|\s*[A-Z]\w*)*(\s*\|\s*None)?$'}}
+      - has: {field: return_type, matches: bad-type-text}
+      - all:
+          - has: {field: return_type, matches: none-arm}
+          - not: {matches: declares-none-answer}
+      - all:
+          - matches: declares-none-answer
+          - not: {has: {field: return_type, regex: '\bNone\b'}}
+      - has: {field: body, has: {stopBy: end, matches: untyped-decode}}
+  response-returner:
+    kind: function_definition
+    has: {field: return_type, regex: '\bResponse\b'}
+    not: {has: {field: name, regex: '^(handle_async_request|async_auth_flow|auth_flow|mint_flow)$'}}
+rule:
+  any:
+    - matches: bad-public-method
+    - matches: response-returner
+    # In a client module: an alias of a forbidden type, and an untyped decode anywhere a public method's own report
+    # does not already cover (a private leg, a module-level reader).
+    - {matches: bad-alias, inside: {kind: module, stopBy: end, matches: client-module}}
+    - {matches: untyped-decode, inside: {kind: module, stopBy: end, matches: client-module}, not: {inside: {stopBy: end, matches: public-method}}}

@@ -1,0 +1,124 @@
+# A documented answer claims its status as a literal: an `int` literal or an `HTTPStatus.<NAME>` member, never a
+# computed value or a name. A status the verifier cannot read as written is a claim nobody can check against the API's
+# documentation.
+#
+# Scope: every module of the package. Documented answers are declared at module level, beside the reader they extend
+# (`FILING_OR_NONE = Expect(FILING).on(HTTPStatus.NOT_FOUND, nothing)`), so a claim is read wherever it is written.
+#
+# A claim is either spelling headgate's `Expect` takes:
+#   * `.on(status, read)` on an Expect CHAIN: `Expect(...)` (also `<module>.Expect(...)` and `Expect[T](...)`), a
+#     `.on(...)` of a chain, or an UPPER_CASE name (a module-level reader being extended, `FILING_OR_NONE.on(...)`),
+#     the status positional or `status=`;
+#   * the constructor given answers: `Expect(ok, answers)`, the answers second-positional or `answers=`.
+# Reported, when a claim
+#   * claims a status that is not an int literal or an `HTTPStatus.<NAME>` member, bare or dotted (`http.HTTPStatus`):
+#     a bool, a negative, a float, a complex, a string, a name (an UPPER_CASE constant too), a call (`HTTPStatus(404)`),
+#     an attribute of a member (`.value`), another enum, an expression, or a starred argument are not; parentheses
+#     around one are transparent;
+#   * gives answers that are not a dict literal (a name, a call, a comprehension, a starred argument), or a dict with a
+#     `**` spread or a key that is not such a literal.
+#
+# Replaces the source rule client-answer-claims-are-literal-and-in-a-method. Changed:
+#   * the in-method half is dropped: it served a ledger keyed by (class, method, status), and answers are now declared
+#     at module level (spec "Endpoint methods");
+#   * an `HTTPStatus.<NAME>` member is a literal status, as headgate's own examples write it;
+#   * `.on` is read only on an Expect chain or an UPPER_CASE name, not on any receiver: the source read every `.on`
+#     because a misplaced claim had to be found anywhere, and an event bus's `.on("tick", ...)` is no claim.
+# Disclosed: an UPPER_CASE receiver is taken to be a reader without checking what it is bound to.
+id: client-answer-status-is-literal
+language: python
+severity: error
+message: a documented answer claims its status as an int literal or an HTTPStatus member
+note: >-
+  Write `Expect(READER).on(HTTPStatus.NOT_FOUND, nothing)` (or `.on(404, ...)`), at module level beside the reader it
+  extends, never a status computed or named by a constant.
+utils:
+  # An argument passed by position: anything in the list but a keyword, a `**` spread or a comment.
+  positional:
+    not: {any: [{kind: keyword_argument}, {kind: dictionary_splat}, {kind: comment}]}
+  status-literal:
+    any:
+      - {kind: integer, not: {regex: '[jJ]$'}}
+      - {kind: attribute, regex: '^(\w+\.)*HTTPStatus\.[A-Z][A-Z0-9_]*$'}
+      - kind: parenthesized_expression
+        has:
+          stopBy: {not: {kind: parenthesized_expression}}
+          any:
+            - {kind: integer, not: {regex: '[jJ]$'}}
+            - {kind: attribute, regex: '^(\w+\.)*HTTPStatus\.[A-Z][A-Z0-9_]*$'}
+  literal-answers:
+    kind: dictionary
+    not:
+      has:
+        any:
+          - kind: dictionary_splat
+          - {kind: pair, has: {field: key, not: {matches: status-literal}}}
+  first-positional:
+    nthChild: {position: 1, ofRule: {matches: positional}}
+    matches: positional
+  second-positional:
+    nthChild: {position: 2, ofRule: {matches: positional}}
+    matches: positional
+  expect-call:
+    kind: call
+    has:
+      field: function
+      any:
+        - {kind: identifier, regex: '^Expect$'}
+        - {kind: attribute, has: {field: attribute, regex: '^Expect$'}}
+        - kind: subscript
+          has:
+            field: value
+            any:
+              - {kind: identifier, regex: '^Expect$'}
+              - {kind: attribute, has: {field: attribute, regex: '^Expect$'}}
+  # What `.on` may extend: an Expect call, a chain of `.on`s on one, or a module-level reader name.
+  expect-chain:
+    any:
+      - matches: expect-call
+      - {kind: identifier, regex: '^_?[A-Z][A-Z0-9_]*$'}
+      - kind: call
+        has: {field: function, kind: attribute, all: [{has: {field: attribute, regex: '^on$'}}, {has: {field: object, matches: expect-chain}}]}
+  on-call:
+    kind: call
+    has: {field: function, kind: attribute, all: [{has: {field: attribute, regex: '^on$'}}, {has: {field: object, matches: expect-chain}}]}
+  # `.on(...)` claiming a status: positionally, else by `status=`.
+  on-claim:
+    matches: on-call
+    has:
+      field: arguments
+      any:
+        - has: {matches: first-positional}
+        - has: {kind: keyword_argument, has: {field: name, regex: '^status$'}}
+  on-claim-is-not-literal:
+    has:
+      field: arguments
+      any:
+        - has: {matches: first-positional, not: {matches: status-literal}}
+        - has:
+            kind: keyword_argument
+            all:
+              - has: {field: name, regex: '^status$'}
+              - has: {field: value, not: {matches: status-literal}}
+  # `Expect(...)` given answers: second-positionally, else by `answers=`.
+  expect-claim:
+    matches: expect-call
+    has:
+      field: arguments
+      any:
+        - has: {matches: second-positional}
+        - has: {kind: keyword_argument, has: {field: name, regex: '^answers$'}}
+  expect-claim-is-not-literal:
+    has:
+      field: arguments
+      any:
+        - has: {matches: second-positional, not: {matches: literal-answers}}
+        - has:
+            kind: keyword_argument
+            all:
+              - has: {field: name, regex: '^answers$'}
+              - has: {field: value, not: {matches: literal-answers}}
+rule:
+  any:
+    - all: [{matches: on-claim}, {matches: on-claim-is-not-literal}]
+    - all: [{matches: expect-claim}, {matches: expect-claim-is-not-literal}]

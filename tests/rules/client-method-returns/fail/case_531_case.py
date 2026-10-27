@@ -1,0 +1,3 @@
+class C(AsyncBaseClient):
+    async def get_x(self) -> Any | None:
+        return await self.get("x", expect=decoder(X))
