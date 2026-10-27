@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from headgate_verify import engine
+from headgate_verify.config import ConfigError, load_config
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -33,7 +34,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     if missing:
         sys.stderr.write(f"headgate-verify: no such path: {missing[0]}\n")
         return _USAGE_ERROR
-    findings = engine.verify(args.paths)
+    try:
+        config = load_config(Path.cwd())
+    except ConfigError as error:
+        sys.stderr.write(f"headgate-verify: {error}\n")
+        return _USAGE_ERROR
+    findings = engine.verify(args.paths, config)
     if args.format == "json":
         rows = [
             {"rule": f.rule, "path": str(f.path), "line": f.line, "message": f.message, "severity": f.severity}

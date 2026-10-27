@@ -60,3 +60,13 @@ def test_warnings_only_exit_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     finding = Finding("some-rule", tmp_path / "client.py", 1, "meh", "warning")
     monkeypatch.setattr(engine, "verify", lambda _paths, _config=None: [finding])
     assert cli.main([str(tmp_path)]) == 0
+
+
+def test_bad_config_exits_two(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A bad [tool.headgate-verify] table is a usage error naming the key."""
+    (tmp_path / "pyproject.toml").write_text("[tool.headgate-verify]\nbogus = []\n")
+    monkeypatch.chdir(tmp_path)
+    assert cli.main([str(tmp_path)]) == USAGE_ERROR
+    assert "bogus" in capsys.readouterr().err
