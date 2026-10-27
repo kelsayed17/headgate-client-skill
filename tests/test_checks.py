@@ -47,6 +47,12 @@ _CLAUSES: dict[str, tuple[str, int]] = {
     "package-layout/fail/init_no_docstring": ("__init__.py holds no docstring", 1),
     "package-layout/fail/no_models": ("has no models.py", 1),
     "package-layout/fail/no_docs_paths": ("has no docs_paths.json", 1),
+    "package-layout/fail/docs_paths_invalid_json": (
+        "docs_paths.json is not a valid docs snapshot: the file is not valid JSON",
+        1,
+    ),
+    "package-layout/fail/docs_paths_null_source_no_reason": ("has source null and no reason", 1),
+    "package-layout/fail/docs_paths_unsorted": ("must be sorted by (path, verb)", 1),
     "package-layout/fail/no_tests_dir": ("has no tests directory", 1),
     "package-layout/fail/tests_missing_method_names": ("has no test_method_names.py", 1),
     "package-layout/fail/tests_missing_client_tests": ("has no test_client.py", 1),
@@ -200,7 +206,8 @@ _COMPLETE_PACKAGE = {
     "__init__.py": '"""The lda client."""\n',
     "client.py": "from headgate import AsyncBaseClient\n",
     "models.py": "",
-    "docs_paths.json": "{}\n",
+    "docs_paths.json": '{"source": "https://lda.example/api", "retrieved": "2026-10-26", "reason": null, '
+    '"endpoints": []}\n',
 }
 
 

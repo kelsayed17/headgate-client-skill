@@ -91,7 +91,7 @@ def test_warning_severity_reported(tmp_path: Path, capsys: pytest.CaptureFixture
         "__init__.py": '"""The lda client."""\n',
         "client.py": _CLEAN_CLIENT,
         "models.py": "import msgspec\n\n\nclass Item(msgspec.Struct, frozen=True):\n    id: str\n",
-        "docs_paths.json": "{}\n",
+        "docs_paths.json": '{"source": null, "retrieved": "2026-10-26", "reason": "none", "endpoints": []}\n',
         "pyproject.toml": "[project]\nname = 'x'\ndependencies = ['headgate[msgspec]>=0.7.0']\n",
     }
     for name, text in files.items():

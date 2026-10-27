@@ -7,7 +7,9 @@ Reported:
 
 * no ``__init__.py``; an ``__init__.py`` holding no docstring; any statement in it after the docstring (a re-export,
   an ``__all__``, an import), one finding per statement. Comments are allowed;
-* no ``models.py``; no ``docs_paths.json`` (its contents are checked elsewhere);
+* no ``models.py``; no ``docs_paths.json``;
+* a ``docs_paths.json`` that is not valid JSON or breaks the docs snapshot schema (``headgate_verify.naming``), at its
+  line 1. Whether the client's names follow it is the client's own ``test_method_names.py``'s business;
 * no tests directory holding both ``test_client.py`` and ``test_method_names.py``. The tests directory is
   ``<package>/tests/``, ``tests/<package name>/`` beside the package (``<package>/../tests/<package name>/``, as the
   conventions draw it; ruling R14), or ``tests/<package name>/`` under the project root, the directory of the nearest
@@ -23,6 +25,7 @@ from typing import TYPE_CHECKING
 
 from headgate_verify.config import nearest_pyproject
 from headgate_verify.finding import Finding
+from headgate_verify.naming import SnapshotError, load_snapshot
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -34,7 +37,8 @@ if TYPE_CHECKING:
 
 RULE = "package-layout"
 _INIT = "__init__.py"
-_REQUIRED = ("models.py", "docs_paths.json")
+_DOCS = "docs_paths.json"
+_REQUIRED = ("models.py", _DOCS)
 _TESTS = ("test_client.py", "test_method_names.py")
 _PAGINATION = "pagination.py"
 
@@ -118,6 +122,16 @@ def _check_pagination(pkg: Package, modules: dict[Path, SgRoot], findings: list[
             return
 
 
+def _check_snapshot(pkg: Package, findings: list[Finding]) -> None:
+    path = pkg.root / _DOCS
+    if not path.is_file():
+        return
+    try:
+        load_snapshot(path)
+    except SnapshotError as error:
+        findings.append(_finding(path, 1, f"{_DOCS} is not a valid docs snapshot: {error}"))
+
+
 def check(pkg: Package, modules: dict[Path, SgRoot], config: Config) -> list[Finding]:
     """Return the ``package-layout`` findings of ``pkg``."""
     del config
@@ -128,6 +142,7 @@ def check(pkg: Package, modules: dict[Path, SgRoot], config: Config) -> list[Fin
         for name in _REQUIRED
         if not (pkg.root / name).is_file()
     )
+    _check_snapshot(pkg, findings)
     _check_tests(pkg, findings)
     _check_pagination(pkg, modules, findings)
     return findings
