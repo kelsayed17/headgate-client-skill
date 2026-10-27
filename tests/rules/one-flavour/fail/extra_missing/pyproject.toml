@@ -1,0 +1,4 @@
+[project]
+name = "one-client"
+version = "0"
+dependencies = ["headgate>=0.7.0", "msgspec>=0.22"]

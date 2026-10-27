@@ -1,0 +1,4 @@
+[project]
+name = "one-client"
+version = "0"
+dependencies = ["headgate[msgspec,pydantic]>=0.7.0"]

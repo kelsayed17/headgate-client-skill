@@ -98,6 +98,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "ast-grep-py" },
+    { name = "packaging" },
     { name = "pyyaml" },
 ]
 
@@ -113,6 +114,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "ast-grep-py" },
+    { name = "packaging" },
     { name = "pyyaml" },
 ]
 

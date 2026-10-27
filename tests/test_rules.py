@@ -5,6 +5,7 @@
 
 from importlib.resources import files
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from ast_grep_py import SgRoot
@@ -14,6 +15,9 @@ from headgate_verify.engine import verify
 from headgate_verify.exemptions import apply_exemptions
 from headgate_verify.package import find_packages
 from headgate_verify.rules import load_rules, parse, rule_from_yaml, run_rules
+
+if TYPE_CHECKING:
+    from headgate_verify.finding import Finding
 
 _FIXTURES = Path(__file__).parent / "rules"
 
@@ -32,6 +36,11 @@ def _write(root: Path, name: str, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
     return path
+
+
+def _verify(paths: list[Path]) -> list[Finding]:
+    """Return ``verify(paths)`` without ``package-layout``: these tests' packages are single modules on purpose."""
+    return [finding for finding in verify(paths) if finding.rule != "package-layout"]
 
 
 def test_shipped_rules_load_and_compile() -> None:
@@ -113,7 +122,7 @@ def test_unparseable_file_is_a_finding(tmp_path: Path) -> None:
     _write(tmp_path, "models.py", "x = 1\n")
     (pkg,) = find_packages([tmp_path])
     assert list(parse(pkg)) == [tmp_path / "models.py"]
-    findings = verify([tmp_path])
+    findings = _verify([tmp_path])
     assert [(finding.rule, finding.path, finding.line, finding.severity) for finding in findings] == [
         ("parse-error", client, 1, "error"),
     ]
@@ -124,9 +133,9 @@ def test_reasoned_allow_silences_the_finding(tmp_path: Path) -> None:
     package = tmp_path / "pkg"
     package.mkdir()
     (package / "client.py").write_text((_FIXTURES / "bad-exemption/pass/reasoned_allow.py").read_text())
-    assert verify([package]) == []
+    assert _verify([package]) == []
     (package / "client.py").write_text('"""No allow comment."""\n')
-    assert [finding.rule for finding in verify([package])] == ["client-module-has-a-client"]
+    assert [finding.rule for finding in _verify([package])] == ["client-module-has-a-client"]
 
 
 def test_allow_on_the_enclosing_def_line(tmp_path: Path) -> None:
@@ -149,7 +158,7 @@ def test_allow_on_the_enclosing_def_line(tmp_path: Path) -> None:
 def test_missing_node_is_a_parse_error(tmp_path: Path) -> None:
     """Code tree-sitter repairs with a MISSING node, but Python refuses, is a parse-error at Python's line."""
     client = _write(tmp_path, "client.py", '"""Doc."""\n\n\ndef f(:\n    pass\n')
-    findings = verify([tmp_path])
+    findings = _verify([tmp_path])
     assert [(finding.rule, finding.path, finding.line) for finding in findings] == [("parse-error", client, 4)]
 
 
@@ -158,9 +167,9 @@ def test_module_finding_is_covered_from_the_leading_block(tmp_path: Path) -> Non
     header = "# Copyright (c) 2026 Example Author\n# SPDX-License-Identifier: MIT\n"
     allow = "# headgate-verify: allow client-module-has-a-client -- generated\n"
     _write(tmp_path, "client.py", f'{header}\n{allow}"""Doc."""\n')
-    assert verify([tmp_path]) == []
+    assert _verify([tmp_path]) == []
     _write(tmp_path, "client.py", f'{header}"""Doc."""\n{allow}')
-    assert [(finding.rule, finding.line) for finding in verify([tmp_path])] == [
+    assert [(finding.rule, finding.line) for finding in _verify([tmp_path])] == [
         ("client-module-has-a-client", 1),
         ("bad-exemption", 4),
     ]

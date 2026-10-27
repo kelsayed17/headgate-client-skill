@@ -1,0 +1,7 @@
+[project]
+name = "one-client"
+version = "0"
+
+[dependency-groups]
+base = ["pytest"]
+dev = [{ include-group = "base" }, "not a requirement !!", "headgate[curl,msgspec,otel]>=0.7.0"]

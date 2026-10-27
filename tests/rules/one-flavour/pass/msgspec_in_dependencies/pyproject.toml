@@ -1,0 +1,4 @@
+[project]
+name = "one-client"
+version = "0"
+dependencies = ["Headgate[MsgSpec] >= 0.7.0 ; python_version >= '3.14'"]

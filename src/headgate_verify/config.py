@@ -29,14 +29,20 @@ class Config:
     """Name fragments that mark a method as a write."""
 
 
-def load_config(start: Path) -> Config:
-    """Return the config from the nearest ``pyproject.toml`` at or above ``start``; defaults if none or no table."""
+def nearest_pyproject(start: Path) -> Path | None:
+    """Return the nearest ``pyproject.toml`` at or above ``start``, or None."""
     start = start.resolve()
     for directory in (start, *start.parents):
         pyproject = directory / "pyproject.toml"
         if pyproject.is_file():
-            return _from_file(pyproject)
-    return Config()
+            return pyproject
+    return None
+
+
+def load_config(start: Path) -> Config:
+    """Return the config from the nearest ``pyproject.toml`` at or above ``start``; defaults if none or no table."""
+    pyproject = nearest_pyproject(start)
+    return Config() if pyproject is None else _from_file(pyproject)
 
 
 def _from_file(pyproject: Path) -> Config:

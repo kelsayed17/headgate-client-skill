@@ -1,0 +1,8 @@
+# Only the three tables of R4 count; a requirement elsewhere declares nothing.
+[project]
+name = "one-client"
+version = "0"
+dependencies = ["headgate>=0.7.0"]
+
+[tool.somewhere]
+dependencies = ["headgate[pydantic]>=0.7.0"]

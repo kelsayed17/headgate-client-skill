@@ -11,6 +11,8 @@ its rule id, which is also the name its allow comments and its fixture directory
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from headgate_verify.checks import flavour, hosts, layout, models
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -22,5 +24,11 @@ if TYPE_CHECKING:
 
 type Check = Callable[[Package, dict[Path, SgRoot], Config], list[Finding]]
 
-CHECKS: tuple[tuple[str, Check], ...] = ()
+
+CHECKS: tuple[tuple[str, Check], ...] = (
+    (hosts.RULE, hosts.check),
+    (models.RULE, models.check),
+    (layout.RULE, layout.check),
+    (flavour.RULE, flavour.check),
+)
 """Every Python check, as ``(rule id, check)``."""
