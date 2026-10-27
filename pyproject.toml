@@ -1,0 +1,47 @@
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14.0"]
+build-backend = "uv_build"
+
+[project]
+name = "headgate-verify"
+version = "0.1.0"
+description = "A static checker for API clients written on the headgate HTTP client library."
+readme = "README.md"
+requires-python = ">=3.14"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Khaled Elsayed", email = "4119211+kelsayed17@users.noreply.github.com" }]
+dependencies = ["ast-grep-py", "pyyaml"]
+
+[project.scripts]
+headgate-verify = "headgate_verify.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1",
+    "syrupy>=6.1.1",
+    "ruff",
+    "ty",
+    "headgate[msgspec,pydantic]>=0.7.0",
+]
+
+[tool.pytest.ini_options]
+addopts = "--import-mode=importlib --strict-markers"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["COM812", "D203", "D213"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.ty.rules]
+all = "error"
