@@ -1,0 +1,25 @@
+# A client's string literals spell every character as itself.
+#
+# The string rules (client-no-placeholder-contact, client-no-identity-user-agent, client-browser-user-agent-only-where-
+# allowed, client-default-headers-carry-no-credential) match a literal's SOURCE TEXT. A check that read the decoded
+# value would catch `"example\x2ecom"` or `"Authori\x7aation"`, and a text match would not. Rather than decode, this
+# rule removes the spelling: no hex, unicode, named or octal escape anywhere in a module. With none possible, a
+# literal's source text IS its value, and the other rules see exactly what a decoded check would. `\n`, `\t`, `\\`, a
+# quote escape and a raw string (which holds no escape at all) are untouched.
+#
+# DISCLOSED: a client that genuinely needs a binary literal (`b"\x00"`, a protocol framing byte) is reported. Give it a
+# named constant built without the escape (`bytes([0])`), or a `# headgate-verify: allow` comment with its reason.
+#
+# PORTED unchanged from the source rule of the same name, but for its scope, message and note.
+id: client-strings-carry-no-encoded-characters
+language: python
+severity: error
+message: a string literal spells every character as itself; no \x, \u, \U, \N or octal escape
+note: >-
+  The user-agent, contact and header rules read a literal's source text, so an escaped character would hide a value
+  from them. Write the character itself.
+files:
+  - '*.py'
+rule:
+  kind: escape_sequence
+  regex: '^\\(x|u|U|N|[0-7])'

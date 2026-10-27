@@ -1,0 +1,53 @@
+# A pydantic wire model carries fields and `model_config`, not behaviour.
+#
+# headgate's pydantic flavour decodes a response body into a frozen, strict `BaseModel` (`model_config =
+# ConfigDict(strict=True, extra="ignore", frozen=True)`, or the class keywords `frozen=True`): the wire as it arrived,
+# validated by field type. A method, a property, a validator or a computed field on one is free to add, and the
+# client-method rules never see it: they read only methods of the client's own classes. A validator also moves the
+# check headgate runs once, strictly, at the seam into code that runs on every construction; a derived value belongs
+# to the code that consumes the model.
+#
+# Scope: models.py.
+#
+# Reported: a function (sync or async, decorated or not: `@property`, `@field_validator`, `@model_validator`,
+# `@computed_field`, `@classmethod` and `@staticmethod` are all this) defined directly in the body of a class, at any
+# nesting depth, one of whose bases is `BaseModel`, `pydantic.BaseModel`, `RootModel`, `pydantic.RootModel` or a
+# subscripted `RootModel[...]`, unless its name starts with `__` (dunders and name-mangled privates). Fields, a
+# `ClassVar`, a docstring, class keywords and `model_config = ConfigDict(...)` are not functions and are not reported.
+#
+# DISCLOSED: a validator carried by a field's type (`Annotated[int, AfterValidator(f)]`), a field whose DEFAULT is
+# computed, a subclass of a model that names only the parent (`class B(Row)`), and a `BaseModel` imported under
+# another name are not read. A `x = property(lambda self: ...)` assignment is not a function definition.
+#
+# NEW in this tool; modelled on client-wire-structs-are-data, with pydantic's bases.
+id: client-pydantic-models-are-data
+language: python
+severity: error
+message: a pydantic wire model carries fields and model_config, not methods, properties or validators
+note: >-
+  Move the derivation or the check to the code that consumes the model, so the model stays the wire as it arrived and
+  headgate's strict decode stays the one validation.
+files:
+  - models.py
+utils:
+  model-base:
+    any:
+      - {kind: identifier, regex: '^(BaseModel|RootModel)$'}
+      - {kind: attribute, has: {field: attribute, regex: '^(BaseModel|RootModel)$'}}
+      - kind: subscript
+        has:
+          field: value
+          any:
+            - {kind: identifier, regex: '^RootModel$'}
+            - {kind: attribute, has: {field: attribute, regex: '^RootModel$'}}
+  model-body:
+    kind: block
+    inside:
+      kind: class_definition
+      has: {field: superclasses, has: {matches: model-base}}
+rule:
+  kind: function_definition
+  has: {field: name, not: {regex: '^__'}}
+  any:
+    - inside: {matches: model-body}
+    - inside: {kind: decorated_definition, inside: {matches: model-body}}

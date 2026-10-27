@@ -1,0 +1,1 @@
+p = templatelib.Template(frag)

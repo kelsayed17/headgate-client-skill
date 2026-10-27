@@ -1,0 +1,5 @@
+await self.get(t"/a", params={"p": render_path(t"/b/{x}")})
+await self.get(url=render_path(t"/a/{x}"))
+await self.fetch(render_path(t"/a/{x}"))
+await self.get_bars(render_path(t"/a/{x}"))
+await self.post(t"/a", render_path(t"/b/{x}"))

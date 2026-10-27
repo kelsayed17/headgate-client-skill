@@ -1,0 +1,5 @@
+await self.get(t"/x", params={"q": "a" + b})
+await self.post("/orders", "a" + b)
+await self.paginate(t"/x", f"{cursor}")
+await self.get(url=f"/x/{y}")
+await self.stream(method=f"{verb}", url=f"/x/{y}")

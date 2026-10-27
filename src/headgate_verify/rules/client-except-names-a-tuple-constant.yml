@@ -1,0 +1,23 @@
+# A multi-type `except` names a module-level tuple CONSTANT, never a tuple of names written in the clause.
+#
+# A client package targets Python 3.14 (PEP 750 t-strings), and at that target `ruff format` rewrites
+# `except (A, B):` into the PEP 758 `except A, B:`, which reads as the Python 2 spelling and is a syntax error before
+# 3.14. A name is not a tuple literal, so the formatter leaves `except _UNREADABLE:` alone. A clause with `as exc`
+# keeps its parentheses (PEP 758 requires them there) and is not reported.
+#
+# Scope: every module of the package.
+#
+# Reported: an `except` clause that lists names separated by a comma without parentheses (`except A, B:`).
+#
+# RENAMED from the source rule `clients-except-names-a-tuple-constant`; the body is unchanged.
+id: client-except-names-a-tuple-constant
+language: python
+severity: error
+message: bind a multi-type except to a module-level tuple constant; ruff format at Python 3.14 strips the parentheses
+note: >-
+  Write `_UNREADABLE = (ValueError, KeyError)` at module level and `except _UNREADABLE:`.
+files:
+  - '*.py'
+rule:
+  kind: except_clause
+  regex: ^except\s+[A-Za-z_][\w.]*\s*,

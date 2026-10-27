@@ -1,0 +1,5 @@
+_A_URL: str = "relative"
+A = _B_URL = "relative"
+_C_URL, D = "relative", "d"
+(_E_URL,) = "x"
+self._F_URL = "relative"

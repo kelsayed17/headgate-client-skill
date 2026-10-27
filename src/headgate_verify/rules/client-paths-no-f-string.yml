@@ -1,0 +1,77 @@
+# No f-string carries URL structure: a path is a t-string, which headgate escapes hole by hole.
+#
+# Scope: every module of the package.
+#
+# Reported: an f-string whose LITERAL parts contain a `/` and no whitespace, wherever it sits (any expression, any
+# depth: an argument, a collection, a comprehension, a lambda, a default, an interpolation of another string). An
+# implicit concatenation with an f-string part is ONE f-string to Python, so its literals are every part's, plain
+# parts included, and it is judged whole: `"/v2/" f"{s}"` is reported and `"see: " f"/v2/{s}"` is not. A part that
+# sits in a concatenation is never judged alone. The literals are the string's own `string_content` children, so a
+# format spec (`f"{d:%Y/%m}"`) and a string inside an interpolation (`f"{'/'.join(x)}"`) are not its literals, as in
+# Python's AST.
+#
+# Escapes are decoded as Python's AST decodes them, in the safe direction each way: a slash is any `/`, or (outside a
+# raw string) a `\x2f` / `\57` / `\057` / `\u002f` / `\U0000002f` escape or ANY `\N{...}` (an over-approximation, so
+# it reports more, never less); whitespace is a `\s` character (a subset of `str.isspace`), a newline that is not a
+# backslash-newline continuation, or (outside a raw string) one of the escapes that decode to a `str.isspace`
+# character, enumerated exactly. In a raw string an escape is two characters, as in Python.
+#
+# Exempt a real non-path slash-and-no-space f-string with a `# headgate-verify: allow` comment and its reason rather
+# than loosening the shape.
+#
+# DISCLOSED (each reports MORE than a decoded-value check, never less): whitespace spelled `\N{...}`, a raw
+# U+001C-U+001F character or a lone CR line ending is not read as whitespace, and any `\N{...}` escape counts as a
+# slash.
+#
+# PORTED unchanged from the source rule of the same name, but for its scope, message and note.
+id: client-paths-no-f-string
+language: python
+severity: error
+message: an f-string carries URL structure; write the path as a t-string so headgate escapes its holes
+note: >-
+  An f-string is one flat str before anything can inspect it, so a value holding '/' or '..' restructures the URL.
+  Write `t"/v2/positions/{symbol}"` and pass it to the verb, which escapes each hole. Prose with a slash normally
+  has a space and is not reported.
+files:
+  - '*.py'
+utils:
+  f-string:
+    kind: string
+    has: {kind: string_start, regex: '^[rR]?[fF]'}
+  # A string PART whose literal text holds a slash (see the header for the escapes).
+  part-has-slash:
+    kind: string
+    has:
+      kind: string_content
+      any:
+        - regex: '/'
+        - has: {kind: escape_sequence, regex: '^\\(x2[fF]|0?57|u002[fF]|U0000002[fF]|N\{.*)$'}
+  # A string PART whose literal text holds whitespace — a strict subset of what str.isspace() accepts.
+  # (A raw string has no escape_sequence nodes, so the escape arm reads non-raw strings only.)
+  part-has-space:
+    kind: string
+    any:
+      # in a raw string a backslash-newline is two characters, so every newline is whitespace
+      - all:
+          - has: {kind: string_start, regex: '[rR]'}
+          - has: {kind: string_content, regex: '\s'}
+      - has:
+          kind: string_content
+          any:
+            # any whitespace but CR/LF, or a LF after an EVEN backslash run (after an odd one it is a continuation)
+            - regex: '[^\S\r\n]|(^|[^\\\r])(\\\\)*\r?\n'
+            - has:
+                kind: escape_sequence
+                regex: '^\\([ntvfr]|x(0[9a-dA-D]|1[c-fC-F]|20|85|[aA]0)|0?1[1-5]|0?3[4-7]|0?40|205|240|u(00(0[9a-dA-D]|1[c-fC-F]|20|85|[aA]0)|1680|200[0-9aA]|202[89fF]|205[fF]|3000)|U0000(00(0[9a-dA-D]|1[c-fC-F]|20|85|[aA]0)|1680|200[0-9aA]|202[89fF]|205[fF]|3000))$'
+rule:
+  any:
+    - matches: f-string
+      not: {inside: {kind: concatenated_string}}
+      all:
+        - matches: part-has-slash
+        - not: {matches: part-has-space}
+    - kind: concatenated_string
+      all:
+        - has: {matches: f-string}
+        - has: {matches: part-has-slash}
+        - not: {has: {matches: part-has-space}}

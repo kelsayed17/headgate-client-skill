@@ -1,0 +1,1 @@
+p = curlOpts.format(s)

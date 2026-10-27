@@ -1,0 +1,74 @@
+# A path hole is escaped ONCE, by headgate.
+#
+# A client hands a t-string to a verb, and headgate renders it at its one seam (`render_path`), escaping every
+# interpolation with `escape_segment` (urllib's `quote(..., safe="")`). So a hole the call site has ALREADY escaped is
+# escaped twice (`a/b` renders as `a%252Fb`), which addresses a resource the server does not have. A CORRECTNESS bug
+# that a test using UUIDs never sees, because a UUID contains nothing the escape changes.
+#
+# Scope: every module of the package.
+#
+# Reported:
+#
+#   * a call to a hand escaper inside an interpolation of a t-string (a string whose prefix holds `t`/`T`), at any
+#     depth: `quote`, `quote_plus` (bare, or as an attribute, `parse.quote`/`urllib.parse.quote`) and headgate's own
+#     `escape_segment`. Every t-string in a client is a path a verb renders;
+#   * a call `<x>.get/post/put/patch/delete/head/stream/paginate(...)` (headgate 0.7.0's verbs, on any receiver) whose
+#     FIRST positional argument is a call to the name `render_path` (headgate's private renderer). The verbs take
+#     `str | Template` and render a Template themselves, so a call site that renders first reads as though escaping
+#     were its job. Pass the t-string itself.
+#
+# Parentheses are see-through, around a callee and around the verb's argument, as in Python's AST. A hand escape
+# OUTSIDE a t-string stays correct where nothing else escapes: an absolute URL on another host built with an f-string.
+#
+# DISCLOSED: the escapers are matched by NAME, so an alias (`from urllib.parse import quote as q`) is not seen; a
+# value escaped in an earlier statement and then put in a hole (`o = quote(x)`, `t"/a/{o}"`) is not followed; nor is
+# a hand-rolled escape (`x.replace("/", "%2F")`).
+#
+# CHANGED from the source rule: the source also read the names `seg` and `path`, the helper names of a seam the
+# source codebase had deleted; they say nothing in a generic client and are dropped. `request` is dropped from the
+# verb list (headgate has no such verb) and `paginate` added.
+id: client-path-holes-are-escaped-once
+language: python
+severity: error
+message: a path hole is escaped twice; headgate escapes every t-string hole, so no quote() in one, and a verb takes the t-string itself
+note: >-
+  Write self.post(t"/orders/{order_id}/"), not t"/orders/{quote(order_id, safe='')}/", and never render the path
+  before the verb: headgate escapes each hole at its seam.
+files:
+  - '*.py'
+utils:
+  t-string:
+    kind: string
+    has: {kind: string_start, regex: '^[A-Za-z]*[tT][A-Za-z]*["'']'}
+  escaper-callee:
+    any:
+      - {kind: identifier, regex: '^(quote|quote_plus|escape_segment)$'}
+      - {kind: attribute, has: {field: attribute, regex: '^(quote|quote_plus|escape_segment)$'}}
+      - {kind: parenthesized_expression, has: {matches: escaper-callee}}
+  render-callee:
+    any:
+      - {kind: identifier, regex: '^render_path$'}
+      - {kind: parenthesized_expression, has: {matches: render-callee}}
+  render-call:
+    kind: call
+    has: {field: function, matches: render-callee}
+  render-call-argument:
+    any:
+      - matches: render-call
+      - {kind: parenthesized_expression, has: {matches: render-call-argument}}
+  wire-verb:
+    any:
+      - {kind: attribute, has: {field: attribute, regex: '^(get|post|put|patch|delete|head|stream|paginate)$'}}
+      - {kind: parenthesized_expression, has: {matches: wire-verb}}
+rule:
+  any:
+    - kind: call
+      has: {field: function, matches: escaper-callee}
+      inside: {stopBy: end, kind: interpolation, inside: {matches: t-string}}
+    - kind: call
+      all:
+        - has: {field: function, matches: wire-verb}
+        - has:
+            field: arguments
+            kind: argument_list
+            has: {nthChild: {position: 1, ofRule: {not: {kind: comment}}}, matches: render-call-argument}

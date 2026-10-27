@@ -1,0 +1,54 @@
+# `*_URL` names an ABSOLUTE URL; a relative path is `*_PATH`. The suffix is how a reader knows whether a value is
+# joined against `base_url` or replaces it.
+#
+# Scope: client.py.
+#
+# Reported: a plain assignment ANYWHERE in the module (module level, a class body, a function body) whose FIRST target
+# is a name ending `_URL` in any case, and whose value is a str literal (plain, raw or u-prefixed, an implicit
+# concatenation of them, parenthesised or not, at the end of a chain) that does not contain `://`. Not reported: an
+# ANNOTATED assignment, a target that is not the first of a chain, a tuple target, an f-, t- or bytes value, a name
+# that merely contains `_URL` (`_URL_PREFIX`) or is `URL` itself.
+#
+# DISCLOSED (each reports MORE than a decoded-value check, never less): a `://` split across the parts of an implicit
+# concatenation (`"https:" "//host"`), or spelled with an escape (`"https\x3a//host"`), is not seen, so that value is
+# reported as relative. A literal `://` in the source always is one in the value.
+#
+# PORTED unchanged from the source rule of the same name, but for its scope, message and note.
+id: client-url-suffix-means-absolute
+language: python
+severity: error
+message: a RELATIVE path is named with a _URL suffix; name it _PATH
+note: >-
+  `*_URL` is an absolute URL (it replaces base_url); a path joined against base_url is `*_PATH`.
+files:
+  - client.py
+utils:
+  url-target:
+    any:
+      - {kind: identifier, regex: '(?i)_URL$'}
+      # `(X_URL) = ...` parses as a one-element tuple_pattern; Python's AST reads it as the name
+      - {kind: tuple_pattern, not: {regex: ','}, has: {matches: url-target}}
+      - {kind: parenthesized_expression, has: {matches: url-target}}
+  relative-str:
+    any:
+      - kind: string
+        all:
+          - has: {kind: string_start, not: {regex: '[fFtTbB]'}}
+          - not: {has: {kind: string_content, regex: '://'}}
+      - kind: concatenated_string
+        all:
+          - not: {has: {kind: string, has: {kind: string_start, regex: '[fFtTbB]'}}}
+          - not: {has: {kind: string, has: {kind: string_content, regex: '://'}}}
+      - {kind: parenthesized_expression, has: {matches: relative-str}}
+  # what a (possibly chained) assignment finally binds
+  bound-relative-str:
+    any:
+      - matches: relative-str
+      - {kind: assignment, has: {field: right, matches: bound-relative-str}}
+rule:
+  kind: assignment
+  inside: {kind: expression_statement}
+  all:
+    - not: {has: {field: type, regex: '.'}}
+    - has: {field: left, matches: url-target}
+    - has: {field: right, matches: bound-relative-str}

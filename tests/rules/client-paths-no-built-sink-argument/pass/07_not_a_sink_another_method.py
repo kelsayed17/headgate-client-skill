@@ -1,0 +1,7 @@
+v = self.fetch(f"/x/{y}")
+u = self.get_bars(f"/x/{y}")
+x = self.forget(f"/x/{y}")
+w = paginate(self.get, f"/x/{y}")
+w2 = self.paginated(f"/x/{y}")
+z = pagination.walk(f"/x/{y}")
+r = self.request(f"/x/{y}")

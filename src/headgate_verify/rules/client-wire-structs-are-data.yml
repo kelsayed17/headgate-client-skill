@@ -1,0 +1,42 @@
+# A wire struct carries fields, not behaviour.
+#
+# A msgspec `Struct` in models.py is the wire as it arrived. A computed member on one is free to add, and the
+# client-method rules never see it: they read only methods of the client's own classes.
+#
+# Scope: models.py.
+#
+# Reported: a function (sync or async, decorated or not: a `@property` is one) defined directly in the body of a class,
+# at any nesting depth, one of whose bases is `Struct` or `<module>.Struct` (`msgspec.Struct`), unless its name starts
+# with `__` (dunders and name-mangled privates).
+#
+# DISCLOSED: a plain field whose DEFAULT is computed, or a `ClassVar` holding a lookup table, is data by this reckoning
+# and is not read; a subclass of a struct that names only the parent (`class B(Page)`) and a `Struct` imported under
+# another name are not read either. A `x = property(lambda self: ...)` assignment is not a function definition.
+#
+# CHANGED from the source rule: the source exempted a method named `follow_cursor`, a convention of its own codebase,
+# which is dropped; the scope is models.py of the package.
+id: client-wire-structs-are-data
+language: python
+severity: error
+message: a msgspec wire struct carries fields, not computed members
+note: >-
+  Move the derivation to the code that consumes the struct, so the struct stays the wire as it arrived.
+files:
+  - models.py
+utils:
+  struct-body:
+    kind: block
+    inside:
+      kind: class_definition
+      has:
+        field: superclasses
+        has:
+          any:
+            - {kind: identifier, regex: '^Struct$'}
+            - {kind: attribute, has: {field: attribute, regex: '^Struct$'}}
+rule:
+  kind: function_definition
+  has: {field: name, not: {regex: '^__'}}
+  any:
+    - inside: {matches: struct-body}
+    - inside: {kind: decorated_definition, inside: {matches: struct-body}}

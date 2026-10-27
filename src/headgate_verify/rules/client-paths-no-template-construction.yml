@@ -1,0 +1,43 @@
+# A `Template` comes from a t-string literal, never a constructor call. headgate's path renderer splices a nested
+# Template VERBATIM, trusting it for what it IS (a t-string literal, author-written structure); `Template(untrusted)`
+# forges that trust and launders the value past every escape.
+#
+# Scope: every module of the package.
+#
+# Reported:
+#
+#   * a call whose callee is the NAME `Template` or an attribute ending `.Template` (`templatelib.Template(x)`), with
+#     parentheses see-through, in any position;
+#   * `Template` imported from `string.templatelib` under an alias, `as Template` included. The alias ban is what
+#     makes the name match complete: `from string.templatelib import Template as T` then `T(frag)` is the same
+#     laundering site under a name the call arm cannot recognise. A plain `import string.templatelib` (or `as tl`)
+#     needs no ban, its call still spells `.Template(...)`.
+#
+# DISCLOSED: a re-binding by assignment (`T = Template; T(frag)`) is not tracked.
+#
+# PORTED unchanged from the source rule of the same name, but for its scope, message and note.
+id: client-paths-no-template-construction
+language: python
+severity: error
+message: a Template is built by hand (or Template is imported under an alias); write a t-string literal instead
+note: >-
+  headgate's path renderer splices a nested Template verbatim; Template(some_str) launders the value past its
+  escaping. Import it as `Template`.
+files:
+  - '*.py'
+utils:
+  template-callee:
+    any:
+      - {kind: identifier, regex: '^Template$'}
+      - {kind: attribute, has: {field: attribute, regex: '^Template$'}}
+      - {kind: parenthesized_expression, has: {matches: template-callee}}
+rule:
+  any:
+    - kind: call
+      has: {field: function, matches: template-callee}
+    - kind: aliased_import
+      has: {field: name, regex: '^Template$'}
+      inside:
+        kind: import_from_statement
+        # the test compared `ImportFrom.module`, which drops a relative import's dots and the spaces in a dotted name
+        has: {field: module_name, regex: '^[.\s]*string\s*\.\s*templatelib$'}

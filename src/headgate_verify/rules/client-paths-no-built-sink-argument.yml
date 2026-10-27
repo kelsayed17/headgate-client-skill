@@ -1,0 +1,57 @@
+# The path argument of a verb is WRITTEN, not built.
+#
+# client-paths-no-f-string is scoped by shape and client-paths-no-format-on-path-name by name, and each leaves a gap: a
+# SLASHLESS path f-string (`f"{seg(start)}..{end}"`), `"/v2/positions/" + s`, `"/v2/%s" % s`, `"/".join(...)` and
+# `_FOO.format(s)` all pass both. This asks what KIND of node sits in the path slot of a call that reaches the wire.
+#
+# Scope: every module of the package.
+#
+# Reported: a method call `<x>.get/post/put/patch/delete/head/stream/paginate(...)` (any receiver; headgate 0.7.0's
+# verbs, its streaming verb and its lazy page walk, each taking the url as its first argument) whose FIRST positional
+# argument is built: an f-string (or an implicit concatenation holding one), a binary operator (`+` concatenation, `%`
+# formatting, any other), or a `.format(...)` / `.join(...)` call on any receiver. Parentheses are see-through, around
+# the argument and around the callee, as in Python's AST. A plain string literal with no holes (`self.get("/v2/clock")`)
+# and a t-string are written, not built, and a bare name stays legal (`url = page.next_url; self.get(url)`, the
+# trusted-str passthrough). A keyword path (`self.get(url=...)`) is not read, and a call whose first argument is a
+# `*args` splat is not read either (the path's position is unknowable).
+#
+# CHANGED from the source rule: the source's two module-function sinks (collectors that took the verb as argument 0
+# and the path as argument 1) are dropped, since headgate has no such collector; its method sinks gain `stream` and
+# `paginate`.
+id: client-paths-no-built-sink-argument
+language: python
+severity: error
+message: a BUILT path reaches the wire; write it as a t-string (path holes are escaped by default)
+note: >-
+  An f-string, `+`, `%`, .format() or .join() interpolates verbatim, so a '/' or '..' inside a value restructures the
+  URL. Write `self.get(t"/v2/positions/{symbol}")`; a plain literal and a bare name (the trusted-str passthrough) are
+  fine.
+files:
+  - '*.py'
+utils:
+  method-sink:
+    any:
+      - {kind: attribute, has: {field: attribute, regex: '^(get|post|put|patch|delete|head|stream|paginate)$'}}
+      - {kind: parenthesized_expression, has: {matches: method-sink}}
+  f-string:
+    kind: string
+    has: {kind: string_start, regex: '^[rR]?[fF]'}
+  format-or-join:
+    any:
+      - {kind: attribute, has: {field: attribute, regex: '^(format|join)$'}}
+      - {kind: parenthesized_expression, has: {matches: format-or-join}}
+  built:
+    any:
+      - matches: f-string
+      - {kind: concatenated_string, has: {matches: f-string}}
+      - kind: binary_operator
+      - {kind: call, has: {field: function, matches: format-or-join}}
+      - {kind: parenthesized_expression, has: {matches: built}}
+rule:
+  kind: call
+  all:
+    - has: {field: function, matches: method-sink}
+    - has:
+        field: arguments
+        kind: argument_list
+        has: {nthChild: {position: 1, ofRule: {not: {kind: comment}}}, matches: built}

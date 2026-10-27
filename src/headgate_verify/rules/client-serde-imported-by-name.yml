@@ -1,0 +1,43 @@
+# The codec and response seams are imported by NAME, never bound as a module.
+#
+# A convention rather than a correctness rule: a new client copied from an old one carries whichever form its source
+# had, and nothing else looks at the import. headgate's names are imported where they are used: the readers and
+# `Expect` from the package root (`from headgate import as_bytes, Expect`), the codec from its flavour module
+# (`from headgate.msgspec import decoder, to_builtins` or `from headgate.pydantic import decoder, to_builtins`).
+#
+# Scope: every module of the package.
+#
+# Reported: `from headgate import msgspec` / `pydantic` / `_responses` (aliased or not, among other names or alone, in
+# parentheses or not), and `import headgate`, `import headgate.msgspec` / `headgate.pydantic` /
+# `headgate._responses` (aliased or not, among other modules or alone): binding headgate's root as a module hides the
+# reader names the same way. Each name is read on its own, so a seam listed second in an import is still seen. The
+# module is compared ignoring a relative import's leading dots and spaces inside a dotted name. A package's OWN module
+# of the same name (`from acme_client.venue import _serde`) is not the seam and is not reported, and neither is
+# another headgate submodule bound whole (`from headgate import errors`).
+#
+# DISCLOSED: `__import__("headgate.msgspec")` and `importlib` are not read.
+#
+# CHANGED from the source rule: `pydantic` joins `msgspec` and `_responses` (headgate.pydantic is the pydantic
+# flavour's module), and the prose names headgate alone.
+id: client-serde-imported-by-name
+language: python
+severity: error
+message: a seam module is bound as a module; import the names you use from headgate / headgate.msgspec / headgate.pydantic
+note: >-
+  `from headgate import Expect, as_bytes` and `from headgate.msgspec import decoder, to_builtins` (or
+  `headgate.pydantic`), so a reader sees the surface at the top of the file.
+files:
+  - '*.py'
+rule:
+  any:
+    - kind: import_from_statement
+      all:
+        - has: {field: module_name, regex: '^[.\s]*headgate$'}
+        # no `field:` — a multi-name import has several `name` children, and `has: {field: …}` sees only the first
+        - any:
+            - has: {kind: dotted_name, regex: '^(msgspec|pydantic|_responses)$'}
+            - has: {kind: aliased_import, has: {field: name, regex: '^(msgspec|pydantic|_responses)$'}}
+    - kind: import_statement
+      any:
+        - has: {kind: dotted_name, regex: '^headgate(\s*\.\s*(msgspec|pydantic|_responses))?$'}
+        - has: {kind: aliased_import, has: {field: name, regex: '^headgate(\s*\.\s*(msgspec|pydantic|_responses))?$'}}

@@ -1,0 +1,7 @@
+await self.get(a if live else b)
+await self.get(a or b)
+await self.get(-a)
+await self.get(paths[0])
+await self.get(await mk())
+await self.get(t"/a/" t"{b}")
+await self.get(path(t"/a/{b}"))

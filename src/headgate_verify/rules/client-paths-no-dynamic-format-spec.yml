@@ -1,0 +1,23 @@
+# A format spec is a literal. headgate's path renderer reserves `raw` as the one spec that splices verbatim, and
+# `:raw}` is meant to be greppable; a t-string evaluates an interpolated spec eagerly to a plain str, so
+# `t"/x/{v:{spec}}"` with `spec = "raw"` renders UNESCAPED while matching no grep for `:raw}`. The runtime cannot tell
+# it from a literal spec; only the source can.
+#
+# Scope: every module of the package.
+#
+# Reported: every replacement field inside a format spec (tree-sitter's `format_expression`, which occurs only there)
+# in an f-string or a t-string, at any nesting depth (`{v:>{width}}`, `{v:{a:{b}}}`). A literal spec (`{d:%Y/%m/%d}`,
+# `{v:raw}`, `{v:>10}`) is not reported.
+#
+# PORTED unchanged from the source rule of the same name, but for its scope, message and note.
+id: client-paths-no-dynamic-format-spec
+language: python
+severity: error
+message: a format spec holds an interpolation; write the spec as a literal so `:raw` stays greppable
+note: >-
+  A t-string evaluates its spec eagerly to a plain str, so `t"/x/{v:{spec}}"` with spec='raw' renders UNESCAPED and
+  headgate's path renderer cannot tell.
+files:
+  - '*.py'
+rule:
+  kind: format_expression

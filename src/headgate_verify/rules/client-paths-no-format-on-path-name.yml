@@ -1,0 +1,40 @@
+# `.format()` is never called on a pathy name: str.format interpolates verbatim, past headgate's per-hole escaping.
+#
+# Scope: every module of the package.
+#
+# Reported: a call `<name>.format(...)` whose receiver is a NAME or an ATTRIBUTE (its last name is read) holding
+# PATH, TEMPLATE, ENDPOINT, URL or ROUTE in any case (`_BARS_PATH`, `self._base_url`, `hosts.ROUTE_X`), the
+# vocabulary client-path-constants-at-module-level uses for a pathy name. `.format_map(...)` is reported too, the
+# same verbatim interpolation. Parentheses around the receiver or the callee are see-through, as in Python's AST. Any
+# other receiver (a literal, a call, a subscript) is not read here: client-paths-no-built-sink-argument reports a
+# `.format()` in a verb's path slot whatever it is called on.
+#
+# DISCLOSED: a receiver bound to a pathy value under a non-pathy name (`fmt = _BARS_PATH; fmt.format(s)`) is not
+# seen; nor is a non-ASCII spelling of the vocabulary that only `str.upper()` folds (`endpoınt` with a dotless i).
+#
+# PORTED unchanged from the source rule of the same name, but for its scope, message and note.
+id: client-paths-no-format-on-path-name
+language: python
+severity: error
+message: a path constant is rendered with .format(), which interpolates verbatim, past the verb's escaping
+note: >-
+  Make the constant a module-level t-string PREFIX and put the holes in a t-string at the call site, where headgate
+  escapes each one.
+files:
+  - '*.py'
+utils:
+  pathy-name:
+    any:
+      - {kind: identifier, regex: '(?i)(PATH|TEMPLATE|ENDPOINT|URL|ROUTE)'}
+      - {kind: attribute, has: {field: attribute, regex: '(?i)(PATH|TEMPLATE|ENDPOINT|URL|ROUTE)'}}
+      - {kind: parenthesized_expression, has: {matches: pathy-name}}
+  format-callee:
+    any:
+      - kind: attribute
+        all:
+          - has: {field: attribute, regex: '^format(_map)?$'}
+          - has: {field: object, matches: pathy-name}
+      - {kind: parenthesized_expression, has: {matches: format-callee}}
+rule:
+  kind: call
+  has: {field: function, matches: format-callee}

@@ -1,0 +1,52 @@
+# A transport is extended by SUBCLASSING it, never by wrapping an instance of it.
+#
+# headgate takes a transport as `HttpOptions(transport=...)`. A class that stores another transport it was handed and
+# forwards `handle_async_request` to it (`self._inner.handle_async_request(request)`) is a wrapper: it must forward
+# `aclose` too, it hides the wrapped transport's own attributes, and what it does not forward is lost. Subclass the
+# transport instead and call `super().handle_async_request(request)`, so everything the base class does carries over.
+#
+# Scope: every module of the package.
+#
+# Reported: a call `self.<attr>.handle_async_request(...)` (awaited or not) inside a function `handle_async_request`
+# of a class, when that same class has an `__init__` that stores one of its parameters as `self.<attr>`
+# (`self._inner = inner`, annotated or not). Nested classes and classes defined in functions are read like any other.
+# The call to `super().handle_async_request(...)` is not reported.
+#
+# DISCLOSED: an attribute assigned from something other than an `__init__` parameter (a transport the class builds
+# itself), a wrapped transport reached through a local alias (`inner = self._inner; inner.handle_async_request(...)`)
+# and a wrapper that stores its argument in a base class's attribute are not read.
+#
+# NEW in this tool (anti-goal 6 of the design).
+id: client-transport-subclassed-not-wrapped
+language: python
+severity: error
+message: a transport wraps another one it was handed; subclass it and call super().handle_async_request instead
+note: >-
+  Write `class Paced(httpx2.AsyncHTTPTransport)` with `async def handle_async_request(self, request): ...; return
+  await super().handle_async_request(request)`, so the base transport's behaviour is inherited, not re-forwarded.
+files:
+  - '*.py'
+rule:
+  pattern: self.$ATTR.handle_async_request($$$ARGS)
+  inside:
+    stopBy: end
+    kind: function_definition
+    has: {field: name, regex: '^handle_async_request$'}
+    inside:
+      kind: block
+      inside:
+        kind: class_definition
+        has:
+          stopBy: end
+          kind: assignment
+          all:
+            - has: {field: left, pattern: self.$ATTR}
+            - has: {field: right, pattern: $PARAM}
+            - inside:
+                stopBy: end
+                kind: function_definition
+                all:
+                  - has: {field: name, regex: '^__init__$'}
+                  - has:
+                      field: parameters
+                      has: {stopBy: end, kind: identifier, pattern: $PARAM}
