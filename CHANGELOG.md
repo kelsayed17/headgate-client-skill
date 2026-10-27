@@ -9,8 +9,9 @@ All notable changes to this project are recorded here. The format follows
 
 - `headgate-verify`, a static checker for API clients written on headgate 0.7.0 or later: 32 ast-grep rules, six
   Python checks over a whole package (one class per host, no provider prefix on models, the package layout, one model
-  flavour with its headgate extra, and two review warnings), allow comments with a required reason, `--format json`,
-  and a `[tool.headgate-verify]` table for project lists.
+  flavour with its headgate extra, and two review warnings), each finding carrying how to fix it, allow comments with
+  a required reason, `--format json`, and a `[tool.headgate-verify]` table for project lists. A path holding no client
+  package is a usage error (exit 2), so a clean run always checked something.
 - `headgate_verify.naming`, the method-name test helper: `endpoint_name`, `load_snapshot` and `check_names`.
 - The `building-headgate-clients` skill and its Claude Code plugin manifest, with references for the conventions, the
   docs snapshot, method naming, testing and the generated rule list.

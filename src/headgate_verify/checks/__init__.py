@@ -5,10 +5,12 @@
 
 A check takes the package, its parsed modules (``rules.parse``: unparseable modules are left out, and reported as
 ``parse-error`` by the engine) and the ``Config``, and returns its findings. ``CHECKS`` registers each check under
-its rule id, which is also the name its allow comments and its fixture directory ``tests/rules/<id>/`` use.
+its rule id, and ``FIXES`` its fix sentence under the same id. The id is also the name its allow comments and its
+fixture directory ``tests/rules/<id>/`` use.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from headgate_verify.checks import flavour, hosts, layout, models, warnings
@@ -34,6 +36,18 @@ CHECKS: tuple[tuple[str, Check], ...] = (
     (warnings.CACHE_RULE, warnings.check_cache),
 )
 """Every Python check, as ``(rule id, check)``."""
+
+FIXES: Mapping[str, str] = MappingProxyType(
+    {
+        hosts.RULE: hosts.FIX,
+        models.RULE: models.FIX,
+        layout.RULE: layout.FIX,
+        flavour.RULE: flavour.FIX,
+        warnings.EXCEPT_RULE: warnings.EXCEPT_FIX,
+        warnings.CACHE_RULE: warnings.CACHE_FIX,
+    }
+)
+"""How to fix each check's findings, by rule id: the sentence the engine attaches to each finding as ``fix``."""
 
 WARNING_CHECKS: frozenset[str] = frozenset({warnings.EXCEPT_RULE, warnings.CACHE_RULE})
 """The checks whose findings are warnings, which never fail a run; every other check reports errors."""

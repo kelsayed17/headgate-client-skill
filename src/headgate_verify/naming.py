@@ -35,6 +35,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING
 
+import inflect
 from ast_grep_py import SgRoot
 
 from headgate_verify.config import Config, load_config
@@ -57,6 +58,7 @@ _KEYS = frozenset({"source", "retrieved", "reason", "endpoints"})
 _ALL_KEYS = "source, retrieved, reason and endpoints"
 _VERBS = {"get": "GET", "post": "POST", "put": "PUT", "patch": "PATCH", "delete": "DELETE", "head": "HEAD"}
 _GET = "GET"
+_INFLECT = inflect.engine()
 
 
 class SnapshotError(ValueError):
@@ -89,15 +91,25 @@ def endpoint_name(path: str, *, filler: frozenset[str] = DEFAULT_FILLER, prefix:
 
     Empty, ``{param}``, version (``v1``, ``vX``) and ``filler`` segments are dropped; a hole inside a segment is
     removed; each remaining segment splits on ``-``, ``_``, ``.`` and a lower-to-upper camelCase boundary (no split
-    inside an all-caps run: ``CNMSshvol`` is one word); the words are lower-cased. A path with no word gives
-    ``prefix`` without its trailing ``_``.
+    inside an all-caps run: ``CNMSshvol`` is one word); the words are lower-cased. A path with no word (``/``,
+    ``/v1/``, ``/api/v1/{id}``) derives no name: raise ``ValueError`` (ruling R29); ``check_names`` asks for a
+    ``"VERB path"`` override for such a read.
     """
+    words = _words(path, filler)
+    if not words:
+        msg = f"the path {path!r} has no word to name it by; name it with a 'VERB path' override"
+        raise ValueError(msg)
+    return prefix + "_".join(words)
+
+
+def _words(path: str, filler: frozenset[str]) -> list[str]:
+    """Return the literal words of ``path`` that ``endpoint_name`` joins; empty when it has none."""
     words: list[str] = []
     for segment in path.split("/"):
         if not segment or _VERSION.match(segment) or segment in filler or _HOLE.fullmatch(segment):
             continue
         words.extend(word.lower() for word in _WORD_SPLIT.split(_HOLE.sub("", segment)) if word)
-    return prefix + "_".join(words) if words else prefix.rstrip("_")
+    return words
 
 
 # load_snapshot
@@ -406,13 +418,19 @@ def _matches(client: tuple[str, ...], documented: tuple[str, ...]) -> bool:
     return len(client) <= len(documented) and documented[len(documented) - len(client) :] == client
 
 
-def _name(segments: tuple[str, ...], universe: Collection[tuple[str, ...]], filler: frozenset[str]) -> str:
-    """Return the path's name, its last word singular when it is an item endpoint whose list shares the name."""
-    name = endpoint_name("/".join(segments), filler=filler)
-    is_item = bool(segments) and segments[-1] == "{}" and segments[:-1] in universe
-    if is_item and endpoint_name("/".join(segments[:-1]), filler=filler) == name:
-        return name.removesuffix("s")
-    return name
+def _name(segments: tuple[str, ...], universe: Collection[tuple[str, ...]], filler: frozenset[str]) -> str | None:
+    """Return the path's name, its last word singular when it is an item endpoint whose list shares the name.
+
+    None when the path has no word (ruling R29). The singular is ``inflect``'s ``singular_noun`` of the last word, or
+    the word itself when inflect finds it already singular (ruling R28).
+    """
+    words = _words("/".join(segments), filler)
+    if not words:
+        return None
+    is_item = segments[-1] == "{}" and segments[:-1] in universe
+    if is_item and _words("/".join(segments[:-1]), filler) == words:
+        words[-1] = _INFLECT.singular_noun(words[-1]) or words[-1]
+    return "get_" + "_".join(words)
 
 
 type _Key = tuple[str, tuple[str, ...]]
@@ -471,12 +489,15 @@ class _Namer:
     by_path: Mapping[_Key, str]
     by_name: Mapping[str, str]
 
-    def derived(self, key: _Key) -> str:
+    def derived(self, key: _Key) -> str | None:
         return _name(key[1], self.paths, self.filler)
 
-    def expected(self, key: _Key) -> str:
+    def expected(self, key: _Key) -> str | None:
+        """Return the expected name; None when the path has no word and no ``"VERB path"`` override names it."""
+        if key in self.by_path:
+            return self.by_path[key]
         derived = self.derived(key)
-        return self.by_path.get(key, self.by_name.get(derived, derived))
+        return None if derived is None else self.by_name.get(derived, derived)
 
 
 def _namer(universe: Collection[_Key], overrides: Mapping[str, str], filler: frozenset[str]) -> _Namer:
@@ -495,7 +516,9 @@ def _collisions(universe: Mapping[_Key, str], namer: _Namer) -> list[str]:
     """Report each pair of read paths that still derive one expected name, suggesting a ``"VERB path"`` key."""
     groups: dict[str, list[_Key]] = {}
     for key in sorted(universe, key=lambda key: (len(key[1]), universe[key], key[0])):
-        groups.setdefault(namer.expected(key), []).append(key)
+        expected = namer.expected(key)
+        if expected is not None:
+            groups.setdefault(expected, []).append(key)
     return [
         f"{universe[first]} and {universe[other]} both name {name}; "
         f'add an override keyed "{other[0]} {universe[other]}"'
@@ -505,7 +528,7 @@ def _collisions(universe: Mapping[_Key, str], namer: _Namer) -> list[str]:
 
 
 def _stale(overrides: Mapping[str, str], known: Collection[_Key], namer: _Namer) -> list[str]:
-    names = {namer.derived(key) for key in known}
+    names = {name for key in known if (name := namer.derived(key)) is not None}
     problems: list[str] = []
     for key, value in sorted(overrides.items()):
         verb, space, path = key.partition(" ")
@@ -537,7 +560,8 @@ def check_names(  # noqa: PLR0913 -- the documented signature: two files and fou
     when the snapshot has a source and it matches exactly one (R18), else its own path. Its name must be the
     ``overrides`` value keyed ``"VERB path"`` for that path (normalised per R16), else the value keyed by the derived
     name, else the derived name (R17): ``endpoint_name`` of the naming path, singularised when it is an item endpoint
-    (its list's path plus one trailing ``{param}``) whose list shares the name. Also reported: a public method whose
+    (its list's path plus one trailing ``{param}``) whose list shares the name. A read whose path has no word is
+    reported as needing a ``"VERB path"`` override unless one names it (R29). Also reported: a public method whose
     path cannot be read (unless in ``exempt_writes``); a documented GET with no method; a method whose endpoint the
     snapshot does not list, or lists more than once (both skipped when ``source`` is null); two read paths that still
     derive one name; a stale override key; a non-GET method in neither ``exempt_writes`` nor ``post_reads``; a name in
@@ -586,13 +610,21 @@ def check_names(  # noqa: PLR0913 -- the documented signature: two files and fou
         universe = {_key(endpoint): endpoint.path.strip("/") for endpoint in documented_reads}
         naming |= {name: found.matched[name][0] for name in reads if len(found.matched.get(name, [])) == 1}
     namer = _namer(universe, overrides, filler)
+    nameless = {key: "/" + path for key, path in universe.items() if namer.expected(key) is None}
     for name, endpoint in sorted(reads.items()):
-        expected = namer.expected(_key(naming[name]))
-        if name != expected:
+        key = _key(naming[name])
+        expected = namer.expected(key)
+        if expected is None:
+            nameless.setdefault(key, "/" + naming[name].path.strip("/"))
+        elif name != expected:
             problems.append(
                 f"{name} reads {endpoint.verb} {endpoint.path} and should be named {expected} "
                 "(or add an override with a reason)"
             )
+    problems += [
+        f'the read {verb} {path} derives no name from its path; add an override keyed "{verb} {path}"'
+        for (verb, _), path in sorted(nameless.items())
+    ]
     problems += _collisions(universe, namer)
     problems += _stale(overrides, {*universe, *map(_key, naming.values())}, namer)
     return problems

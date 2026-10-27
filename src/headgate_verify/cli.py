@@ -11,15 +11,22 @@ from typing import TYPE_CHECKING
 
 from headgate_verify import engine
 from headgate_verify.config import ConfigError, load_config
+from headgate_verify.package import NoPackageError, find_packages
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from headgate_verify.finding import Finding
+
 _USAGE_ERROR = 2
+_FIX_INDENT = "    "
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run the verifier and return the exit code: 0 clean, 1 errors found, 2 usage error."""
+    """Run the verifier and return the exit code: 0 clean, 1 errors found, 2 usage error.
+
+    stdout carries only the findings; stderr carries usage errors and, after a run, ``checked N package(s)``.
+    """
     parser = argparse.ArgumentParser(prog="headgate-verify", description="Check headgate API clients.")
     parser.add_argument("paths", nargs="*", type=Path, help="client packages or directories containing them")
     parser.add_argument("--format", choices=("text", "json"), default="text")
@@ -32,23 +39,43 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _USAGE_ERROR
     missing = [path for path in args.paths if not path.exists()]
     if missing:
-        sys.stderr.write(f"headgate-verify: no such path: {missing[0]}\n")
+        sys.stderr.writelines(f"headgate-verify: no such path: {path}\n" for path in missing)
         return _USAGE_ERROR
     try:
         config = load_config(Path.cwd())
     except ConfigError as error:
         sys.stderr.write(f"headgate-verify: {error}\n")
         return _USAGE_ERROR
+    try:
+        packages = find_packages(args.paths)
+    except NoPackageError as error:
+        sys.stderr.writelines(
+            f"headgate-verify: no client package (a directory holding client.py) under {path}\n" for path in error.paths
+        )
+        return _USAGE_ERROR
     findings = engine.verify(args.paths, config)
     if args.format == "json":
         rows = [
-            {"rule": f.rule, "path": str(f.path), "line": f.line, "message": f.message, "severity": f.severity}
+            {
+                "rule": f.rule,
+                "path": str(f.path),
+                "line": f.line,
+                "message": f.message,
+                "severity": f.severity,
+                "fix": f.fix,
+            }
             for f in findings
         ]
         sys.stdout.write(json.dumps(rows, indent=2) + "\n")
     else:
-        sys.stdout.writelines(f"{finding.render()}\n" for finding in findings)
+        sys.stdout.writelines(_text(finding) for finding in findings)
+    sys.stderr.write(f"checked {len(packages)} package(s)\n")
     return 1 if any(finding.severity == "error" for finding in findings) else 0
+
+
+def _text(finding: Finding) -> str:
+    """Return the finding's line, then its fix indented on the next line when it has one."""
+    return f"{finding.render()}\n" + (f"{_FIX_INDENT}{finding.fix}\n" if finding.fix else "")
 
 
 if __name__ == "__main__":

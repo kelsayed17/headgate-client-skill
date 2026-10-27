@@ -11,7 +11,17 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-_SKIPPED = frozenset({"tests", ".venv"})
+_SKIPPED = frozenset({"tests", ".venv", "venv", "build", "dist", "node_modules", "site-packages"})
+"""Directory names discovery never enters, besides any name starting with ``.``: tests, virtualenvs, build output."""
+
+
+class NoPackageError(ValueError):
+    """A path given to the verifier holds no client package; ``paths`` lists every such path, in the order given."""
+
+    def __init__(self, paths: Sequence[Path]) -> None:
+        """Name every path under which no client package was found."""
+        self.paths = tuple(paths)
+        super().__init__(", ".join(str(path) for path in self.paths))
 
 
 @dataclass(frozen=True)
@@ -38,6 +48,13 @@ def _roots(path: Path) -> set[Path]:
 
 
 def find_packages(paths: Sequence[Path]) -> list[Package]:
-    """Return each client package under ``paths`` once, sorted by root."""
-    roots = set().union(*(_roots(path) for path in paths)) if paths else set()
+    """Return each client package under ``paths`` once, sorted by root.
+
+    Raise ``NoPackageError`` naming every path under which none is found: a run that checked nothing is not clean.
+    """
+    found = [(path, _roots(path)) for path in paths]
+    empty = [path for path, roots in found if not roots]
+    if empty:
+        raise NoPackageError(empty)
+    roots = {root for _, path_roots in found for root in path_roots}
     return [_package(root) for root in sorted(roots)]

@@ -4,15 +4,14 @@
 """Tests for finding ordering and package discovery."""
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from headgate_verify import cli
+from headgate_verify.checks import FIXES, models
 from headgate_verify.engine import verify
 from headgate_verify.finding import Finding
-from headgate_verify.package import find_packages
-
-if TYPE_CHECKING:
-    import pytest
+from headgate_verify.package import NoPackageError, find_packages
 
 
 def _touch(path: Path) -> None:
@@ -40,17 +39,30 @@ def test_package_lists_its_modules(tmp_path: Path) -> None:
 
 
 def test_findings_sort_by_path_line_rule() -> None:
-    """Findings order by path, then line, then rule; render is path:line rule message."""
+    """Findings order by path, then line, then rule; render is path:line severity rule message."""
     late = Finding("b", Path("a.py"), 2, "m", "error")
     early = Finding("z", Path("a.py"), 1, "m", "error")
     other = Finding("a", Path("a.py"), 2, "m", "warning")
     assert sorted([late, early, other]) == [early, other, late]
-    assert early.render() == "a.py:1 z m"
+    assert early.render() == "a.py:1 error z m"
 
 
-def test_verify_without_packages_finds_nothing(tmp_path: Path) -> None:
-    """A path holding no client package yields no findings."""
-    assert verify([tmp_path]) == []
+def test_verify_without_packages_raises(tmp_path: Path) -> None:
+    """A path holding no client package is refused, naming every such path, not reported clean."""
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    (tmp_path / "c" / "lda").mkdir(parents=True)
+    (tmp_path / "c" / "lda" / "client.py").write_text("")
+    with pytest.raises(NoPackageError) as raised:
+        verify([tmp_path / "a", tmp_path / "c", tmp_path / "b"])
+    assert raised.value.paths == (tmp_path / "a", tmp_path / "b")
+
+
+def test_build_directories_are_skipped(tmp_path: Path) -> None:
+    """Discovery skips virtualenvs, build output, node_modules and site-packages."""
+    for name in ("venv", "build", "dist", "node_modules", "site-packages", "lib/site-packages", "ok"):
+        _touch(tmp_path / name / "x" / "client.py")
+    assert [package.root for package in find_packages([tmp_path])] == [tmp_path / "ok" / "x"]
 
 
 _CLEAN_CLIENT = """\
@@ -105,3 +117,11 @@ def test_warning_severity_reported(tmp_path: Path, capsys: pytest.CaptureFixture
     ], findings
     assert cli.main([str(package)]) == 0
     assert "client-except-needs-review" in capsys.readouterr().out
+
+
+def test_check_finding_carries_its_fix(tmp_path: Path) -> None:
+    """A Python check's findings carry the fix sentence registered for it in ``FIXES``."""
+    _touch(tmp_path / "lda" / "client.py")
+    (tmp_path / "lda" / "models.py").write_text("class LdaFiling:\n    pass\n")
+    (finding,) = [finding for finding in verify([tmp_path]) if finding.rule == models.RULE]
+    assert finding.fix == models.FIX == FIXES[models.RULE]

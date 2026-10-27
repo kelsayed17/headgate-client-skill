@@ -36,6 +36,11 @@ if TYPE_CHECKING:
     from headgate_verify.package import Package
 
 RULE = "package-layout"
+FIX = (
+    "Add the file the finding names: a docstring-only `__init__.py`, `models.py`, a schema-valid `docs_paths.json`, "
+    "`test_client.py` and `test_method_names.py` in the tests directory, and `pagination.py` beside a paged client."
+)
+"""How to fix a ``package-layout`` finding."""
 _INIT = "__init__.py"
 _DOCS = "docs_paths.json"
 _REQUIRED = ("models.py", _DOCS)

@@ -59,8 +59,8 @@ Do the steps in order. Each produces something the next one needs.
    does not fail the run, but a person has to judge it: fix the code, or keep it with an allow comment whose reason
    says why it is right (`# headgate-verify: allow <rule-id> -- <reason>`). Say how each was resolved when you report.
 
-**Done** means `headgate-verify` prints nothing (every warning was fixed or carries an allow comment with a reason)
-and exits `0`, and pytest passes, the naming test included. Not before: a client the verifier passes can still be
+**Done** means `headgate-verify` prints nothing on stdout (every warning was fixed or carries an allow comment with a
+reason) and exits `0`, and pytest passes, the naming test included. Not before: a client the verifier passes can still be
 misnamed, and only the naming test catches that.
 
 ## Never

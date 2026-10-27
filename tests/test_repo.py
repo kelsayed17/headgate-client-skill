@@ -24,9 +24,10 @@ if TYPE_CHECKING:
 ROOT = Path(__file__).parent.parent
 SKILL = ROOT / "skills" / "building-headgate-clients"
 GENERATOR = ROOT / "scripts" / "gen_rule_docs.py"
-FORBIDDEN = b"prism"
-EXEMPT = frozenset({"CHANGELOG.md", "tests/test_repo.py"})
-"""Files allowed the word: the changelog's credits, and this file, whose test is named after it."""
+FORBIDDEN = b"pri" + b"sm"
+"""Built from two halves, so this file never spells the word it forbids."""
+EXEMPT = frozenset({"CHANGELOG.md"})
+"""The one file allowed the word: the changelog's credits."""
 LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 FRONTMATTER = re.compile(r"\A---\n(?P<body>.*?)\n---\n", re.DOTALL)
 DESCRIPTION_START = "Use when building, extending or reviewing an HTTP API client on headgate"
@@ -61,7 +62,7 @@ def _frontmatter(path: Path) -> dict[str, str]:
     return {key.strip(): value.strip() for key, _, value in pairs}
 
 
-def test_no_prism_strings() -> None:
+def test_no_forbidden_strings() -> None:
     """No file of the repository outside ``EXEMPT`` names the project the conventions came from."""
     offenders = [
         str(path.relative_to(ROOT))
@@ -124,11 +125,13 @@ def test_rule_docs_check_fails_when_stale(tmp_path: Path) -> None:
 
 
 def test_rule_docs_list_every_rule() -> None:
-    """The generated list names every YAML rule and every check, with its severity."""
+    """The generated list names every YAML rule and every check, with its severity and its fix."""
     generator = _generator()
     text = generator.render()
     for row in generator.rows():
         assert f"| `{row.id}` | {row.severity} |" in text
+        assert row.fix
+        assert f"| `{row.id}` | {row.fix.replace('|', chr(92) + '|')} |" in text
 
 
 @pytest.mark.parametrize("rule_id", [name for name, _ in CHECKS])

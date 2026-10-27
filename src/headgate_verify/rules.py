@@ -43,6 +43,13 @@ BAD_EXEMPTION = "bad-exemption"
 """The reserved id of the finding for a malformed, unknown or unused allow comment."""
 RESERVED_RULES = (BAD_EXEMPTION, PARSE_ERROR)
 """Rule ids the engine itself reports; no rule file or check may take one."""
+RESERVED_FIXES: dict[str, str] = {
+    BAD_EXEMPTION: "Give the allow comment a reason after `--` and name a rule it covers on that line or block, "
+    "or delete it.",
+    PARSE_ERROR: "Make the module a readable UTF-8 file that Python's own parser accepts; no other rule reads it "
+    "until then.",
+}
+"""How to fix each finding the engine itself reports."""
 
 _LANGUAGE = "python"
 _DEFAULT_FILES = ("**/*.py",)
@@ -67,6 +74,8 @@ class YamlRule:
     """The YAML text, re-read with each run's ``Config`` when it holds a ``{{config.<field>}}`` placeholder."""
     skip_packages_in: str | None = None
     """The ``Config`` field naming the packages this rule does not run in."""
+    note: str = ""
+    """How to fix a finding: the YAML's ``note``, its whitespace folded to single spaces; empty when it has none."""
 
     def applies_to(self, relative: PurePath) -> bool:
         """Return whether a module at ``relative`` to the package root matches one of the rule's ``files`` globs."""
@@ -142,6 +151,7 @@ def rule_from_yaml(text: str, rule_id: str) -> YamlRule:
         config=_sg_config(text, Config()),
         source=text,
         skip_packages_in=skip_packages_in,
+        note=" ".join(str(data.get("note") or "").split()),
     )
 
 
@@ -175,6 +185,9 @@ def _parsed(pkg: Package) -> _Parsed:
         except UnicodeDecodeError as error:
             errors.append(_parse_error(path, 1, f"not UTF-8: {error.reason}"))
             continue
+        except OSError as error:
+            errors.append(_parse_error(path, 1, f"the file cannot be read: {error.strerror or error}"))
+            continue
         # Python's own parser first: tree-sitter repairs some code Python refuses with a MISSING node, which
         # ast-grep-py cannot see. ast.parse only builds a tree; it neither imports nor executes the module.
         try:
@@ -184,6 +197,10 @@ def _parsed(pkg: Package) -> _Parsed:
             continue
         except ValueError as error:
             errors.append(_parse_error(path, 1, str(error)))
+            continue
+        except (MemoryError, RecursionError) as error:
+            # Too deep or too large for Python's parser: a finding, so one module cannot crash the run.
+            errors.append(_parse_error(path, 1, f"{type(error).__name__}: too deep or too large for Python's parser"))
             continue
         root = SgRoot(text, _LANGUAGE)
         broken = root.root().find(kind="ERROR")

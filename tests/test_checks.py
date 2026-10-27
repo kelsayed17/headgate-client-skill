@@ -42,6 +42,7 @@ _CLAUSES: dict[str, tuple[str, int]] = {
     "model-has-no-provider-prefix/fail/all_caps_prefix": ("starts with the provider name Pkg", 1),
     "model-has-no-provider-prefix/fail/prefix_alone": ("starts with the provider name Pkg", 1),
     "model-has-no-provider-prefix/fail/nested_class": ("starts with the provider name Pkg", 1),
+    "model-has-no-provider-prefix/fail/prefixed_named_package": ("starts with the provider name Widgets", 1),
     "package-layout/fail/no_init": ("has no __init__.py", 1),
     "package-layout/fail/init_reexports": ("__init__.py holds a docstring only", 2),
     "package-layout/fail/init_no_docstring": ("__init__.py holds no docstring", 1),
@@ -196,8 +197,8 @@ def test_multi_word_package_prefix(tmp_path: Path) -> None:
         },
     )
     expected = (
-        f"{package / 'models.py'}:1 model-has-no-provider-prefix the model class OpenMeteoForecast starts with the "
-        "provider name OpenMeteo; the module path already says the provider"
+        f"{package / 'models.py'}:1 error model-has-no-provider-prefix the model class OpenMeteoForecast starts "
+        "with the provider name OpenMeteo; the module path already says the provider"
     )
     assert _own([package], "model-has-no-provider-prefix") == [expected]
 

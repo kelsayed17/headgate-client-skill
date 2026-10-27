@@ -129,7 +129,7 @@ ending `_URL` holds an absolute URL, a relative one ends `_PATH` (`client-url-su
   ```
 
   A write that returns nothing is annotated `-> None` and passes headgate's `nothing` reader:
-  `await self.delete(t"v2/orders/{order_id}", expect=nothing)` (every verb but `head()` needs `expect=`, and
+  `await self.delete(t"v2/watchlists/{watchlist_id}", expect=nothing)` (every verb but `head()` needs `expect=`, and
   `client-method-returns` asks a `-> None` method for `expect=nothing`). A write's body goes through a module-level
   writer: `return await self.post("v2/orders", body=NEW_ORDER(order), expect=ORDER, retry=ORDER_RETRY)`.
 - **Path parameters are positional arguments** interpolated into a t-string. Query parameters arrive as

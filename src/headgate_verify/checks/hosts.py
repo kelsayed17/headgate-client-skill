@@ -46,6 +46,11 @@ if TYPE_CHECKING:
     from headgate_verify.package import Package
 
 RULE = "one-class-per-host"
+FIX = (
+    "Give each host its own class, subclassing only AsyncBaseClient and passing `base_url=` a module-level name of "
+    "its module; move a call to another host into that host's class."
+)
+"""How to fix a ``one-class-per-host`` finding."""
 _BASE = "AsyncBaseClient"
 _VERBS = frozenset({"get", "post", "put", "patch", "delete", "head", "stream", "paginate"})
 _STRING_PREFIX = re.compile(r"^[rRbBuUfFtT]*('''|\"\"\"|'|\")")

@@ -99,6 +99,13 @@ def test_endpoint_name_prefix() -> None:
     assert endpoint_name("/v1/orders", prefix="list_") == "list_orders"
 
 
+@pytest.mark.parametrize("path", ["/", "/v1/", "/api/v1/{id}", ""])
+def test_endpoint_name_refuses_a_path_with_no_word(path: str) -> None:
+    """A path with no literal word derives no name: never ``get``, which would shadow ``AsyncBaseClient.get``."""
+    with pytest.raises(ValueError, match="no word"):
+        endpoint_name(path)
+
+
 # load_snapshot
 
 
@@ -221,6 +228,58 @@ def test_collision_misnamed_item_endpoint_reported(tmp_path: Path) -> None:
     snapshot = _snapshot(tmp_path, [("GET", "/v3/reference/tickers"), ("GET", "/v3/reference/tickers/{ticker}")])
     problems = check_names(_client(tmp_path, body), snapshot)
     assert any("get_reference_tickers" in p and "should be named get_reference_ticker" in p for p in problems), problems
+
+
+@pytest.mark.parametrize(
+    ("plural", "singular"),
+    [
+        ("companies", "company"),
+        ("addresses", "address"),
+        ("categories", "category"),
+        ("statuses", "status"),
+        ("boxes", "box"),
+        ("tickers", "ticker"),
+        ("orders", "order"),
+        ("data", "datum"),
+    ],
+)
+def test_item_endpoint_singularises_with_inflect(plural: str, singular: str, tmp_path: Path) -> None:
+    """The item endpoint's last word is the English singular of its list's, not the plural minus one ``s``."""
+    body = _get(f"get_{plural}", f'"v1/{plural}"') + _get(f"get_{singular}", f't"v1/{plural}/{{key}}"')
+    snapshot = _snapshot(tmp_path, [("GET", f"/v1/{plural}"), ("GET", f"/v1/{plural}/{{key}}")])
+    assert check_names(_client(tmp_path, body), snapshot) == []
+
+
+def test_only_the_last_word_singularises(tmp_path: Path) -> None:
+    """``/v1/news-statuses/{id}`` beside its list is ``get_news_status``: only the last literal word changes."""
+    body = _get("get_news_statuses", '"v1/news-statuses"') + _get("get_news_status", 't"v1/news-statuses/{key}"')
+    snapshot = _snapshot(tmp_path, [("GET", "/v1/news-statuses"), ("GET", "/v1/news-statuses/{key}")])
+    assert check_names(_client(tmp_path, body), snapshot) == []
+
+
+def test_wordless_read_needs_a_path_override(tmp_path: Path) -> None:
+    """A documented read whose path derives no word is reported as needing a ``"VERB path"`` override."""
+    client = _client(tmp_path, _get("get_root", '"/"'))
+    problems = check_names(client, _snapshot(tmp_path, [("GET", "/")]))
+    assert len(problems) == 1, problems
+    assert problems[0] == 'the read GET / derives no name from its path; add an override keyed "GET /"'
+
+
+def test_wordless_read_takes_its_path_override(tmp_path: Path) -> None:
+    """With a ``"VERB path"`` override, a wordless read is named by it."""
+    client = _client(tmp_path, _get("get_root", '"api/v1/"') + _get("get_item", 't"v1/{key}"'))
+    snapshot = _snapshot(tmp_path, [("GET", "/api/v1/"), ("GET", "/v1/{key}")])
+    assert len(check_names(client, snapshot)) == 2  # noqa: PLR2004 -- one problem per wordless read
+    assert check_names(client, snapshot, overrides={"GET /api/v1/": "get_root", "GET /v1/{key}": "get_item"}) == []
+
+
+def test_wordless_read_without_source_needs_a_path_override(tmp_path: Path) -> None:
+    """Without a docs source the client's own wordless path is reported the same way."""
+    client = _client(tmp_path, _get("get_root", '"v2/"'))
+    problems = check_names(client, _snapshot(tmp_path, [], source=None, reason="no reference"))
+    assert len(problems) == 1, problems
+    assert "derives no name" in problems[0]
+    assert check_names(client, _snapshot(tmp_path, [], source=None, reason="x"), overrides={"GET v2": "get_root"}) == []
 
 
 def test_no_general_singularisation(tmp_path: Path) -> None:
@@ -377,7 +436,7 @@ def test_helper_call_is_not_an_unreadable_endpoint(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("list_path", "item_path", "list_name", "item_name"),
     [
-        ("v1/data", "v1/data/{i}", "get_data", "get_datum"),
+        ("v1/series", "v1/series/{i}", "get_series", "get_series_item"),
         ("v2/stocks/bars", "v2/stocks/{s}/bars", "get_stocks_bars", "get_stock_bars"),
     ],
 )

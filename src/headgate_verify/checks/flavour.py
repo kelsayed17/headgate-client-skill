@@ -43,6 +43,11 @@ if TYPE_CHECKING:
 type Flavour = Literal["msgspec", "pydantic"]
 
 RULE = "one-flavour"
+FIX = (
+    "Use one model flavour (msgspec or pydantic) across the package, and declare `headgate[<flavour>]` in the "
+    "nearest pyproject.toml."
+)
+"""How to fix a ``one-flavour`` finding."""
 _FLAVOURS: tuple[Flavour, ...] = ("msgspec", "pydantic")
 _HEADGATE = "headgate"
 

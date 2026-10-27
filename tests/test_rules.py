@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 import pytest
 from ast_grep_py import SgRoot
 
+from headgate_verify import rules as rules_module
+from headgate_verify.checks import CHECKS, FIXES
 from headgate_verify.config import Config
 from headgate_verify.engine import verify
 from headgate_verify.exemptions import apply_exemptions
@@ -173,3 +175,56 @@ def test_module_finding_is_covered_from_the_leading_block(tmp_path: Path) -> Non
         ("client-module-has-a-client", 1),
         ("bad-exemption", 4),
     ]
+
+
+def test_unreadable_module_is_a_parse_error(tmp_path: Path) -> None:
+    """A module that cannot be read (here a dangling symlink) is a parse-error finding, not a traceback."""
+    client = _write(tmp_path, "client.py", '"""Doc."""\n')
+    dangling = tmp_path / "models.py"
+    dangling.symlink_to(tmp_path / "gone.py")
+    findings = _verify([tmp_path])
+    assert [(finding.rule, finding.path, finding.line) for finding in findings] == [
+        ("client-module-has-a-client", client, 1),
+        ("parse-error", dangling, 1),
+    ]
+    assert "cannot be read" in findings[1].message
+
+
+@pytest.mark.parametrize("error", [RecursionError, MemoryError])
+def test_parser_exhaustion_is_a_parse_error(
+    error: type[Exception], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A module too deep or too large for Python's parser is a parse-error finding, not a traceback."""
+    client = _write(tmp_path, "client.py", '"""Doc."""\n')
+
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        raise error
+
+    monkeypatch.setattr(rules_module.ast, "parse", refuse)
+    findings = _verify([tmp_path])
+    assert [(finding.rule, finding.path) for finding in findings] == [("parse-error", client)]
+    assert error.__name__ in findings[0].message
+
+
+def test_yaml_finding_carries_the_rule_note_as_its_fix(tmp_path: Path) -> None:
+    """A YAML rule's ``note`` reaches its findings as ``fix``."""
+    _write(tmp_path, "client.py", '"""No client class."""\n')
+    (finding,) = _verify([tmp_path])
+    note = {rule.id: rule.note for rule in load_rules()}["client-module-has-a-client"]
+    assert finding.rule == "client-module-has-a-client"
+    assert note
+    assert finding.fix == note
+
+
+def test_note_is_loaded_and_optional() -> None:
+    """``note`` is read onto the rule, folded to one line; a rule without one has an empty note."""
+    assert rule_from_yaml(_FILLER_RULE, "filler-name").note == ""
+    noted = rule_from_yaml(_FILLER_RULE + "note: >-\n  Rename it\n  to a word.\n", "filler-name")
+    assert noted.note == "Rename it to a word."
+
+
+def test_every_shipped_rule_and_check_has_a_fix() -> None:
+    """Every YAML rule has a note and every Python check a fix sentence."""
+    assert [rule.id for rule in load_rules() if not rule.note.strip()] == []
+    assert [name for name, _ in CHECKS if not FIXES.get(name, "").strip()] == []
+    assert set(FIXES) == {name for name, _ in CHECKS}

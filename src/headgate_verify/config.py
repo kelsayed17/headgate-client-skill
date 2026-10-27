@@ -51,7 +51,11 @@ def _from_file(pyproject: Path) -> Config:
     except tomllib.TOMLDecodeError as error:
         msg = f"{pyproject}: not valid TOML: {error}"
         raise ConfigError(msg) from error
-    table = data.get("tool", {}).get("headgate-verify", {})
+    tool = data.get("tool", {})
+    if not isinstance(tool, dict):
+        msg = f"{pyproject}: [tool] must be a table"
+        raise ConfigError(msg)
+    table = tool.get("headgate-verify", {})
     if not isinstance(table, dict):
         msg = f"{pyproject}: [tool.headgate-verify] must be a table"
         raise ConfigError(msg)

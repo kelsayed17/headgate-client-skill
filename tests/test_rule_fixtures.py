@@ -14,8 +14,10 @@ Conventions, for whoever adds a rule or a check:
   for its own rule.
 * An entry is either a ``.py`` file or a directory. A ``.py`` file is copied into a fresh temporary package as its
   ``client.py``. A directory is copied whole and is the package, so it must hold a ``client.py``; use one when the
-  rule reads more than one module or a ``pyproject.toml``. Both are copied out of the repository first, so no
-  ``pyproject.toml`` of this repository is ever the nearest one.
+  rule reads more than one module or a ``pyproject.toml``. A directory may instead hold one subdirectory holding the
+  ``client.py`` (``params_and_body/widgets/client.py``): that subdirectory is the package, under its own name, for a
+  rule that reads the package's name. Both are copied out of the repository first, so no ``pyproject.toml`` of this
+  repository is ever the nearest one.
 * A fixture sets ``Config`` fields with a JSON object on line 1 of its ``.py`` file (of ``client.py`` for a
   directory), each value a list of strings::
 
@@ -63,7 +65,7 @@ def _cases() -> list[tuple[str, str, Path]]:
 
 
 def _config(entry: Path) -> Config:
-    source = entry / "client.py" if entry.is_dir() else entry
+    source = min(entry.rglob("client.py")) if entry.is_dir() else entry
     first = source.read_text(encoding="utf-8").partition("\n")[0]
     if not first.startswith(_CONFIG_PREFIX):
         return Config()

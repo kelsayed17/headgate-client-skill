@@ -4,9 +4,10 @@
 """Write the skill's ``references/verifier.md`` from the rules and checks ``headgate-verify`` runs.
 
 The rule list is read from the verifier itself: every YAML rule (``load_rules()``: id, severity, message, and the
-``Config`` fields it reads) and every Python check (``CHECKS``: id, severity from ``WARNING_CHECKS``, and the first
-sentence its module docstring gives after the check's id). Run it after changing a rule; ``--check`` exits 1, writing
-nothing, when the file is not what it would write (CI and ``tests/test_repo.py`` run that).
+``Config`` fields it reads, and its ``note`` as the fix) and every Python check (``CHECKS``: id, severity from
+``WARNING_CHECKS``, the first sentence its module docstring gives after the check's id, and its ``FIXES`` entry).
+Run it after changing a rule; ``--check`` exits 1, writing nothing, when the file is not what it would write (CI and
+``tests/test_repo.py`` run that).
 
     uv run python scripts/gen_rule_docs.py           # rewrite the file
     uv run python scripts/gen_rule_docs.py --check   # exit 1 if it is stale
@@ -19,9 +20,9 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from headgate_verify.checks import CHECKS, WARNING_CHECKS
+from headgate_verify.checks import CHECKS, FIXES, WARNING_CHECKS
 from headgate_verify.config import Config
-from headgate_verify.rules import BAD_EXEMPTION, PARSE_ERROR, YamlRule, load_rules
+from headgate_verify.rules import BAD_EXEMPTION, PARSE_ERROR, RESERVED_FIXES, YamlRule, load_rules
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -42,6 +43,7 @@ class Row:
     severity: str
     message: str
     config: tuple[str, ...]
+    fix: str
 
 
 def _key(field_name: str) -> str:
@@ -68,9 +70,15 @@ def _config_fields(rule: YamlRule) -> tuple[str, ...]:
 
 def rows() -> list[Row]:
     """Return every YAML rule and Python check, sorted by id."""
-    found = [Row(rule.id, rule.severity, rule.message, _config_fields(rule)) for rule in load_rules()]
+    found = [Row(rule.id, rule.severity, rule.message, _config_fields(rule), rule.note) for rule in load_rules()]
     found += [
-        Row(name, "warning" if name in WARNING_CHECKS else "error", _check_message(name, check.__module__), ())
+        Row(
+            name,
+            "warning" if name in WARNING_CHECKS else "error",
+            _check_message(name, check.__module__),
+            (),
+            FIXES[name],
+        )
         for name, check in CHECKS
     ]
     return sorted(found, key=lambda row: row.id)
@@ -110,15 +118,19 @@ uv run headgate-verify --format json src/        # findings as a JSON list, for 
 ```
 
 A *client package* is a directory holding a `client.py`; every directory under the given paths that holds one is
-checked, except directories named `tests` or `.venv` or starting with `.`. Each finding is one line,
-`<file>:<line> <rule-id> <message>`; with `--format json` each is an object with `rule`, `path`, `line`, `message` and
-`severity`.
+checked, except directories named `tests`, `.venv`, `venv`, `build`, `dist`, `node_modules` or `site-packages`, or
+starting with `.`. Each finding is one line on stdout, `<file>:<line> <severity> <rule-id> <message>`, followed by
+its fix indented by four spaces; with `--format json` each is an object with `rule`, `path`, `line`, `message`,
+`severity` and `fix`. stdout carries nothing else: after a run, stderr says `checked N package(s)`.
 
 | Exit | Meaning |
 |---|---|
 | `0` | no error (warnings may have been printed) |
 | `1` | at least one error |
-| `2` | a usage error: no path given, a path that does not exist, or a malformed `[tool.headgate-verify]` table |
+| `2` | a usage error: no path given, a missing path, a path with no client package, or a malformed config table |
+
+A run that checks nothing is not clean: every path under which no client package is found is named on stderr, and
+the exit is `2`.
 
 ## Configuration
 
@@ -172,7 +184,16 @@ Two findings come from the verifier itself, not a rule:
 | Finding | Severity | Meaning |
 |---|---|---|
 | `{BAD_EXEMPTION}` | error | an allow comment is malformed, has no reason, names no known rule, or drops nothing |
-| `{PARSE_ERROR}` | error | a module does not parse (Python's own parser, then tree-sitter's); no rule read it |
+| `{PARSE_ERROR}` | error | a module cannot be read or parsed (Python's parser, then tree-sitter's); no rule read it |
+
+## How to fix each rule
+
+Every finding carries its rule's fix: the YAML rule's `note`, or the check's registered sentence. The text format
+prints it under the finding; `--format json` gives it as `fix`.
+
+| Rule | How to fix |
+|---|---|
+{{FIXES}}
 
 ## What it does not check
 
@@ -187,7 +208,10 @@ Two findings come from the verifier itself, not a rule:
 def render() -> str:
     """Return the text of ``references/verifier.md``."""
     table = [f"| `{row.id}` | {row.severity} | {_cell(row.message)} |" for row in rows()]
-    return _HEAD + "\n".join(_config_rows()) + "\n" + _MIDDLE + "\n".join(table) + "\n" + _TAIL
+    fixes = [f"| `{row.id}` | {_cell(row.fix)} |" for row in rows()]
+    fixes += [f"| `{rule_id}` | {_cell(fix)} |" for rule_id, fix in sorted(RESERVED_FIXES.items())]
+    tail = _TAIL.replace("{FIXES}", "\n".join(fixes))
+    return _HEAD + "\n".join(_config_rows()) + "\n" + _MIDDLE + "\n".join(table) + "\n" + tail
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -16,11 +16,17 @@ A read (a `GET`, or a method listed in `post_reads`) is named `get_` plus the li
    word: `CNMSshvol`), and lower-case the words.
 3. Join them with `_` after `get_`.
 4. **On a collision only**, an item endpoint (its list's path plus one trailing `{param}`) whose name equals its
-   list's takes its last word singular, by dropping a trailing `s`: `GET /v1/clients/` is `get_clients` and
-   `GET /v1/clients/{id}/` is `get_client`. The list endpoint must itself be a **read** (a documented `GET`, or a
+   list's takes its last word singular, as the `inflect` library's `singular_noun` gives it (the word itself when
+   inflect finds it already singular): `GET /v1/clients/` is `get_clients` and `GET /v1/clients/{id}/` is
+   `get_client`; `companies` gives `company`, `statuses` `status`, `boxes` `box`, `data` `datum`. Only that last
+   word changes. A word inflect leaves as it is (`series`) still collides; a `"VERB path"` override separates it. The list endpoint must itself be a **read** (a documented `GET`, or a
    `post_reads` method's path): no collision, no singularising. So beside `POST /v2/orders` (a write, which keeps its
    verb name `create_order`), `GET /v2/orders/{id}` derives `get_orders`, and naming it `get_order` takes an
    override: `"GET /v2/orders/{id}": "get_order",  # one order; the list path is only the create endpoint`.
+
+A path with no word (`/`, `/v1/`, `/api/v1/{id}`) derives no name: never a bare `get`, which would shadow
+`AsyncBaseClient.get`. `endpoint_name` raises `ValueError` for it, and `check_names` reports such a read as needing a
+`"VERB path"` override (`"GET /": "get_root",  # the API's index`) until one names it.
 
 The default filler words are `api`, `global`, `locale`, `market`, `markets` and `us`. Examples, from the worked
 examples' snapshots:
@@ -114,6 +120,7 @@ heading's name.
 - a documented `GET` with no method: the snapshot is the docs, so cover every read;
 - a method whose path the snapshot does not list, or matches more than one documented path;
 - two read paths that still derive one name;
+- a read whose path has no word and no `"VERB path"` override;
 - a stale override, or a name in `exempt_writes` / `post_reads` that is no method;
 - a non-`GET` method in neither `exempt_writes` nor `post_reads`;
 - a method whose path is not a string, t-string or module-level constant (or a one-level delegate to one), so it

@@ -73,3 +73,10 @@ def test_non_string_item_is_config_error(tmp_path: Path) -> None:
     _write(tmp_path, "[tool.headgate-verify]\npost-reads = [1]\n")
     with pytest.raises(ConfigError, match="post-reads"):
         load_config(tmp_path)
+
+
+def test_non_table_tool_is_config_error(tmp_path: Path) -> None:
+    """A ``tool`` key that is not a table is a ConfigError, not a traceback."""
+    _write(tmp_path, 'tool = "x"\n')
+    with pytest.raises(ConfigError, match=r"\[tool\] must be a table"):
+        load_config(tmp_path)

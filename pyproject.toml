@@ -11,7 +11,34 @@ requires-python = ">=3.14"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Khaled Elsayed", email = "4119211+kelsayed17@users.noreply.github.com" }]
-dependencies = ["ast-grep-py", "packaging", "pyyaml"]
+keywords = [
+    "headgate", "api-client", "http-client", "linter", "static-analysis", "ast-grep", "code-quality",
+    "claude-code", "agent-skills",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Quality Assurance",
+    "Typing :: Typed",
+]
+dependencies = [
+    "ast-grep-py>=0.51.0",
+    "inflect>=7.6.0",
+    "packaging>=26.3",
+    "pyyaml>=6.0.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/kelsayed17/headgate-client-skill"
+Documentation = "https://github.com/kelsayed17/headgate-client-skill/tree/main/skills/building-headgate-clients"
+Repository = "https://github.com/kelsayed17/headgate-client-skill"
+Issues = "https://github.com/kelsayed17/headgate-client-skill/issues"
+Changelog = "https://github.com/kelsayed17/headgate-client-skill/blob/main/CHANGELOG.md"
 
 [project.scripts]
 headgate-verify = "headgate_verify.cli:main"

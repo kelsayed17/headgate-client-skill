@@ -58,6 +58,16 @@ if TYPE_CHECKING:
 
 EXCEPT_RULE = "client-except-needs-review"
 CACHE_RULE = "client-cache-with-bearer-auth"
+EXCEPT_FIX = (
+    "Make the handler re-raise a `headgate.errors` type, or confirm the swallowed error is a documented answer, and "
+    "record which with an allow comment carrying the reason."
+)
+"""How to resolve a ``client-except-needs-review`` warning."""
+CACHE_FIX = (
+    "Build the HttpCache on the default `Partition.CREDENTIAL`; keep `Partition.SHARED` only for public data, with an "
+    "allow comment saying why."
+)
+"""How to resolve a ``client-cache-with-bearer-auth`` warning."""
 _BEARER_SEEDS = frozenset({"BearerAuth", "CachedTokenAuth"})
 _STATIC_HEADER_AUTH = "StaticHeaderAuth"
 _FOLLOW = 3

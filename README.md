@@ -40,7 +40,9 @@ uv run headgate-verify src/your_clients/          # every client package under t
 uv run headgate-verify --format json src/         # for an agent or CI
 ```
 
-Exit `0` is clean (warnings allowed), `1` means at least one error, `2` a usage error. Project lists (packages allowed
+Findings go to stdout, one per line as `<file>:<line> <severity> <rule> <message>` with the fix indented on the next
+line; `checked N package(s)` goes to stderr. Exit `0` is clean (warnings allowed), `1` means at least one error, `2` a
+usage error, including a path under which no client package is found. Project lists (packages allowed
 a browser User-Agent, name fragments that mark an order-executing write) go in `[tool.headgate-verify]` in
 `pyproject.toml`. The full rule list, configuration and allow-comment form are in
 [`references/verifier.md`](skills/building-headgate-clients/references/verifier.md).

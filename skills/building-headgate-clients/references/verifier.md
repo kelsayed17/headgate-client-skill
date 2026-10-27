@@ -14,15 +14,19 @@ uv run headgate-verify --format json src/        # findings as a JSON list, for 
 ```
 
 A *client package* is a directory holding a `client.py`; every directory under the given paths that holds one is
-checked, except directories named `tests` or `.venv` or starting with `.`. Each finding is one line,
-`<file>:<line> <rule-id> <message>`; with `--format json` each is an object with `rule`, `path`, `line`, `message` and
-`severity`.
+checked, except directories named `tests`, `.venv`, `venv`, `build`, `dist`, `node_modules` or `site-packages`, or
+starting with `.`. Each finding is one line on stdout, `<file>:<line> <severity> <rule-id> <message>`, followed by
+its fix indented by four spaces; with `--format json` each is an object with `rule`, `path`, `line`, `message`,
+`severity` and `fix`. stdout carries nothing else: after a run, stderr says `checked N package(s)`.
 
 | Exit | Meaning |
 |---|---|
 | `0` | no error (warnings may have been printed) |
 | `1` | at least one error |
-| `2` | a usage error: no path given, a path that does not exist, or a malformed `[tool.headgate-verify]` table |
+| `2` | a usage error: no path given, a missing path, a path with no client package, or a malformed config table |
+
+A run that checks nothing is not clean: every path under which no client package is found is named on stderr, and
+the exit is `2`.
 
 ## Configuration
 
@@ -114,7 +118,55 @@ Two findings come from the verifier itself, not a rule:
 | Finding | Severity | Meaning |
 |---|---|---|
 | `bad-exemption` | error | an allow comment is malformed, has no reason, names no known rule, or drops nothing |
-| `parse-error` | error | a module does not parse (Python's own parser, then tree-sitter's); no rule read it |
+| `parse-error` | error | a module cannot be read or parsed (Python's parser, then tree-sitter's); no rule read it |
+
+## How to fix each rule
+
+Every finding carries its rule's fix: the YAML rule's `note`, or the check's registered sentence. The text format
+prints it under the finding; `--format json` gives it as `fix`.
+
+| Rule | How to fix |
+|---|---|
+| `client-accepts-transport` | `def __init__(self, *, transport: httpx2.AsyncBaseTransport \| None = None)` and `super().__init__(base_url=_BASE_URL, http=HttpOptions(transport=transport))`. Tests pass a `headgate.testing.FakeTransport` there. |
+| `client-answer-status-is-literal` | Write `Expect(READER).on(HTTPStatus.NOT_FOUND, nothing)` (or `.on(404, ...)`), at module level beside the reader it extends, never a status computed or named by a constant. |
+| `client-base-url` | Name the host (`_BASE_URL`, or a per-class prefix in a multi-class package) so a reader finds the client's configuration in one block. |
+| `client-base-url-has-no-path` | A base URL is a host; a path prefix in it makes two prefixes on one host look like two hosts. Spell the prefix out in each method's path literal (`"api/v1/filings/"`, `t"api/v1/filings/{uuid}/"`): a constant joined to a path is a built path, which the client-paths rules refuse, and a t-string escapes a hole as one segment, so the prefix cannot ride one. |
+| `client-browser-user-agent-only-where-allowed` | A generic browser spoof is the only UA literal allowed, and only in a package listed in `browser_user_agent_packages` that names the host forcing it. |
+| `client-cache-with-bearer-auth` | Build the HttpCache on the default `Partition.CREDENTIAL`; keep `Partition.SHARED` only for public data, with an allow comment saying why. |
+| `client-constructor` | `super().__init__(base_url=_BASE_URL, rate=Rate.per_second(_MAX_RATE_PER_SEC))`, once, with no splat. Exempt a client with no quota to declare by an allow comment on the class line. |
+| `client-default-headers-carry-no-credential` | Credentials go through auth= (headgate: StaticHeaderAuth / QueryParamAuth / CachedTokenAuth, or an httpx2.Auth of the client's own), which owns the setdefault merge and the trusted-origin check. StaticHeaderAuth({}) is the idiomatic "no key configured" value; no if-branch is needed. |
+| `client-except-names-a-tuple-constant` | Write `_UNREADABLE = (ValueError, KeyError)` at module level and `except _UNREADABLE:`. |
+| `client-except-needs-review` | Make the handler re-raise a `headgate.errors` type, or confirm the swallowed error is a documented answer, and record which with an allow comment carrying the reason. |
+| `client-impersonating-transport-owns-its-headers` | Pass default_headers=True and delete the hand-set browser headers: the handshake's browser version is whatever the rolling impersonate alias resolves to today. |
+| `client-method-returns` | `-> None` exactly when the call reads `nothing`; `bytes` first when it reads `as_bytes`; otherwise the decoded model, with `\| None` only when the reader declares a `nothing` answer. Never Optional, Any, object, a bare or primitive-valued dict, or a Response. |
+| `client-method-shape` | One public method is one endpoint: a single `return await self.<verb>(path, params=params, expect=READER)` forwarding its parameters, its reader a module-level UPPER_CASE name; a paged GET is a sync def returning `self.paginate(path, expect=READER, pages=PAGES, limit=MAX_PAGES)`. Composition, deciding what an answer means and building the request belong above the client. |
+| `client-module-has-a-client` | The checks of client methods read a class only when it names `AsyncBaseClient` in its bases. Subclass it by that bare name (`from headgate import AsyncBaseClient`), not through an alias or a dotted path. |
+| `client-no-hand-rolled-page-loop` | Return `self.paginate(path, expect=READER, pages=PAGES, limit=MAX_PAGES)` from a sync method, with the pager (`NextUrl`, `Cursor`, `Offset`, `LinkHeader`) and the `PageLimit` as module-level values. |
+| `client-no-identity-user-agent` | The code that builds the client composes the identity (product token and contact) and passes it as `user_agent`. |
+| `client-no-placeholder-contact` | The contact a User-Agent carries is deployment configuration passed to the client; no address, placeholder or real, belongs in source. |
+| `client-no-user-agent-beside-impersonation` | The handshake's browser version is whatever curl_cffi's rolling alias resolves to today; a UA written beside it is a second source of truth that goes stale on the next bump. Let default_headers=True supply it. |
+| `client-order-writes-name-retry` | Pass `retry=False`, or a module-level policy (`retry=ORDER_RETRY`). A method that is idempotent under replay but whose name holds a fragment takes an allow comment with its reason; a project's fragments are `write-name-fragments` in `[tool.headgate-verify]`. |
+| `client-path-constants-at-module-level` | Module level is where path constants live, and it keeps transport detail out of the client's public attribute surface. |
+| `client-path-holes-are-escaped-once` | Write self.post(t"/orders/{order_id}/"), not t"/orders/{quote(order_id, safe='')}/", and never render the path before the verb: headgate escapes each hole at its seam. |
+| `client-paths-no-built-sink-argument` | An f-string, `+`, `%`, .format() or .join() interpolates verbatim, so a '/' or '..' inside a value restructures the URL. Write `self.get(t"/v2/positions/{symbol}")`; a plain literal and a bare name (the trusted-str passthrough) are fine. |
+| `client-paths-no-dynamic-format-spec` | A t-string evaluates its spec eagerly to a plain str, so `t"/x/{v:{spec}}"` with spec='raw' renders UNESCAPED and headgate's path renderer cannot tell. |
+| `client-paths-no-f-string` | An f-string is one flat str before anything can inspect it, so a value holding '/' or '..' restructures the URL. Write `t"/v2/positions/{symbol}"` and pass it to the verb, which escapes each hole. Prose with a slash normally has a space and is not reported. |
+| `client-paths-no-format-on-path-name` | Make the constant a module-level t-string PREFIX and put the holes in a t-string at the call site, where headgate escapes each one. |
+| `client-paths-no-template-construction` | headgate's path renderer splices a nested Template verbatim; Template(some_str) launders the value past its escaping. Import it as `Template`. |
+| `client-pydantic-models-are-data` | Move the derivation or the check to the code that consumes the model, so the model stays the wire as it arrived and headgate's strict decode stays the one validation. |
+| `client-reads-no-environment` | Take the value as a constructor argument and let the code that builds the client read its settings. |
+| `client-serde-imported-by-name` | `from headgate import Expect, as_bytes` and `from headgate.msgspec import decoder, to_builtins` (or `headgate.pydantic`), so a reader sees the surface at the top of the file. |
+| `client-strings-carry-no-encoded-characters` | The user-agent, contact and header rules read a literal's source text, so an escaped character would hide a value from them. Write the character itself. |
+| `client-transport-subclassed-not-wrapped` | Write `class Paced(httpx2.AsyncHTTPTransport)` with `async def handle_async_request(self, request): ...; return await super().handle_async_request(request)`, so the base transport's behaviour is inherited, not re-forwarded. |
+| `client-url-suffix-means-absolute` | `*_URL` is an absolute URL (it replaces base_url); a path joined against base_url is `*_PATH`. |
+| `client-user-agent-has-no-default` | The User-Agent is deployment configuration. Make the parameter required and pass it where the client is built. |
+| `client-wire-structs-are-data` | Move the derivation to the code that consumes the struct, so the struct stays the wire as it arrived. |
+| `model-has-no-provider-prefix` | Drop the provider name from the class name: `LdaFiling` in package `lda` is `Filing`. |
+| `one-class-per-host` | Give each host its own class, subclassing only AsyncBaseClient and passing `base_url=` a module-level name of its module; move a call to another host into that host's class. |
+| `one-flavour` | Use one model flavour (msgspec or pydantic) across the package, and declare `headgate[<flavour>]` in the nearest pyproject.toml. |
+| `package-layout` | Add the file the finding names: a docstring-only `__init__.py`, `models.py`, a schema-valid `docs_paths.json`, `test_client.py` and `test_method_names.py` in the tests directory, and `pagination.py` beside a paged client. |
+| `bad-exemption` | Give the allow comment a reason after `--` and name a rule it covers on that line or block, or delete it. |
+| `parse-error` | Make the module a readable UTF-8 file that Python's own parser accepts; no other rule reads it until then. |
 
 ## What it does not check
 

@@ -7,7 +7,9 @@ The provider is the package's directory name; its prefix is that name in PascalC
 ``open_meteo`` -> ``OpenMeteo``). Reported: any class in the package's ``models.py``, nested ones included, whose name
 starts with the prefix, compared case-insensitively, at a word boundary: the prefix is the whole name, or the next
 character is an uppercase letter, a digit or ``_``. So ``LdaFiling``, ``LDAFiling`` and ``Lda`` are reported, while
-``Ldap`` (a lowercase letter follows) is not. Classes in other modules (``LdaClient`` in ``client.py``) are not read.
+``Ldap`` (a lowercase letter follows) is not. A name ending ``Params`` or ``Body`` (``WidgetsParams``,
+``WidgetsBody``) is a request type the conventions name this way and is not reported (ruling R30). Classes in other
+modules (``LdaClient`` in ``client.py``) are not read.
 
 DISCLOSED: an all-capitals name that only begins with the prefix's letters (``SECTION`` in package ``sec``) is
 reported; such a class takes an allow comment.
@@ -27,8 +29,12 @@ if TYPE_CHECKING:
     from headgate_verify.package import Package
 
 RULE = "model-has-no-provider-prefix"
+FIX = "Drop the provider name from the class name: `LdaFiling` in package `lda` is `Filing`."
+"""How to fix a ``model-has-no-provider-prefix`` finding."""
 _MODELS = "models.py"
 _WORDS = re.compile(r"[^A-Za-z0-9]+")
+_REQUEST_SUFFIXES = ("Params", "Body")
+"""Request-type names the conventions build from the provider's name (ruling R30); never reported."""
 
 
 def provider_prefix(package_name: str) -> str:
@@ -37,6 +43,8 @@ def provider_prefix(package_name: str) -> str:
 
 
 def _prefixed(name: str, prefix: str) -> bool:
+    if name.endswith(_REQUEST_SUFFIXES):
+        return False
     if not prefix or not name.lower().startswith(prefix.lower()):
         return False
     rest = name[len(prefix) :]

@@ -3,10 +3,11 @@
 
 """Run every rule and check over the client packages under the given paths."""
 
+import dataclasses
 from typing import TYPE_CHECKING
 
 from headgate_verify import rules
-from headgate_verify.checks import CHECKS
+from headgate_verify.checks import CHECKS, FIXES
 from headgate_verify.config import Config
 from headgate_verify.exemptions import apply_exemptions
 from headgate_verify.package import Package, find_packages
@@ -19,16 +20,21 @@ if TYPE_CHECKING:
 
 
 def verify(paths: Sequence[Path], config: Config | None = None) -> list[Finding]:
-    """Return the sorted findings for every package under ``paths``; ``Config()`` when ``config`` is None."""
+    """Return the sorted findings for every package under ``paths``; ``Config()`` when ``config`` is None.
+
+    Each finding carries its rule's fix: a YAML rule's ``note``, a check's ``FIXES`` entry. Raise
+    ``NoPackageError`` (from ``find_packages``) naming every path under which no client package is found.
+    """
     config = Config() if config is None else config
     yaml_rules = rules.load_rules()
     known = frozenset(rule.id for rule in yaml_rules) | {name for name, _ in CHECKS}
+    fixes = {rule.id: rule.note for rule in yaml_rules} | dict(FIXES) | rules.RESERVED_FIXES
     rules.clear_cache()
     findings: list[Finding] = []
     for package in find_packages(paths):
         findings.extend(_check(package, yaml_rules, known, config))
     rules.clear_cache()
-    return sorted(findings)
+    return sorted(dataclasses.replace(finding, fix=fixes.get(finding.rule, "")) for finding in findings)
 
 
 def _check(
