@@ -6,11 +6,12 @@
 from typing import TYPE_CHECKING, NamedTuple, override
 
 import pytest
+from headgate import RateBudget
 from headgate.pydantic import to_builtins
 from headgate.testing import FakeTransport, TestClock, isolated_breakers
 from syrupy.extensions.json import JSONSnapshotExtension
 
-from examples.pydantic.open_meteo.client import ArchiveClient, ForecastClient
+from examples.pydantic.open_meteo.client import MAX_IN_FLIGHT, PACE, ArchiveClient, ForecastClient
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
@@ -67,15 +68,25 @@ def clock() -> TestClock:
 
 
 @pytest.fixture
-async def clients(fake: FakeTransport, clock: TestClock) -> AsyncIterator[Clients]:
-    """Yield both clients on ``fake`` and ``clock``, with breakers of their own.
+def budget(clock: TestClock) -> RateBudget:
+    """Return the budget the two clients share, as ``free_api_budget()`` builds it, but paced on ``clock``.
 
-    Each client paces itself at one request every 2 seconds. On ``clock`` each wait advances the clock instead of
-    taking time, so the pace holds (and is asserted) while the test runs at once; retries wait on it too.
+    A ``RateBudget`` measures time on the ``timing`` it is built with, not on an installed clock, so it is given the
+    clock's.
+    """
+    return RateBudget(PACE, max_in_flight=MAX_IN_FLIGHT, timing=clock.timing)
+
+
+@pytest.fixture
+async def clients(fake: FakeTransport, clock: TestClock, budget: RateBudget) -> AsyncIterator[Clients]:
+    """Yield both clients on ``fake``, ``clock`` and one shared ``budget``, with breakers of their own.
+
+    The two clients spend from one budget, one request a second between them. On ``clock`` each wait advances the clock
+    instead of taking time, so the pace holds (and is asserted) while the test runs at once; retries wait on it too.
     """
     with clock.install(), isolated_breakers():
         async with (
-            ForecastClient(user_agent=USER_AGENT, transport=fake) as forecast,
-            ArchiveClient(user_agent=USER_AGENT, transport=fake) as archive,
+            ForecastClient(user_agent=USER_AGENT, budget=budget, transport=fake) as forecast,
+            ArchiveClient(user_agent=USER_AGENT, budget=budget, transport=fake) as archive,
         ):
             yield Clients(forecast, archive)

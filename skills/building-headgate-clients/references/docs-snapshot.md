@@ -21,10 +21,14 @@ endpoint, named after its path" checkable.
 }
 ```
 
-- `source`: the URL the endpoints were read from, or `null` when the API publishes nothing machine-readable.
+- `source`: one URL, the one the endpoints were read from, or `null` when the API publishes nothing
+  machine-readable. When the reads come from several documents, it is the one URL that holds them all (a pinned
+  directory, a docs index).
 - `retrieved`: the date you read it, `YYYY-MM-DD`. Use the date the server's `Date` header gives (UTC), so it matches
   the dates the client's docstring records.
-- `reason`: `null`, unless `source` is `null`; then one sentence saying why nothing could be saved.
+- `reason`: one sentence, or `null`. Required when `source` is `null`: why nothing could be saved. Beside a non-null
+  `source` it is allowed when the reads come from several documents: it names each one and what it documents.
+  Otherwise it is `null`.
 - `endpoints`: every documented verb and path, sorted by `(path, verb)`, no repeats. Keep the paths as the docs write
   them: with any prefix the API serves them under (`/api/v1/`), holes named as the docs name them (`{id}`). The
   name check strips holes and matches the client's paths by suffix, so neither the hole names nor the prefix need to
@@ -84,8 +88,9 @@ Three requests in all (the docs page, a `406`, the spec), paced 10 seconds apart
 Open-Meteo documents each API in its own OpenAPI file in its GitHub repository (`openapi/forecast.yml`,
 `openapi/historical-weather.yml`), one path each, served from different hosts (`api.open-meteo.com`,
 `archive-api.open-meteo.com`). One package holds both clients, so one `docs_paths.json` holds both paths. `source` is
-one string, so it lists the two raw-file URLs, pinned to the commit read and separated by a space, and `reason` says
-so in a sentence. The snapshot has no host field: which class serves which path is the client module's business.
+the one URL that holds both files, the `openapi/` directory pinned to the commit read
+(`https://github.com/open-meteo/open-meteo/tree/<commit>/openapi`), and `reason` names the two files and the host
+each documents. The snapshot has no host field: which class serves which path is the client module's business.
 
 ## Then
 

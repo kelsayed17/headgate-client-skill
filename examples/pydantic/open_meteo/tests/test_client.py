@@ -17,6 +17,7 @@ import httpx2
 import pytest
 from headgate import RateLimitError, UpstreamStatusError
 
+from examples.pydantic.open_meteo.client import PACE, free_api_budget
 from examples.pydantic.open_meteo.tests.conftest import USER_AGENT
 
 if TYPE_CHECKING:
@@ -38,6 +39,26 @@ def recorded(fixture: str, status: int = 200) -> httpx2.Response:
     """Return the recorded body ``fixture`` as Open-Meteo sent it: JSON, with ``status``."""
     return httpx2.Response(
         status, content=(FIXTURES / fixture).read_bytes(), headers={"Content-Type": "application/json; charset=utf-8"}
+    )
+
+
+def throttled() -> httpx2.Response:
+    """Return the free API's quota 429, with a ``Retry-After`` of 42 seconds.
+
+    Not recorded: provoking a 429 would break the terms. Status, headers and body are the example in Open-Meteo's own
+    docs (https://github.com/open-meteo/open-meteo/blob/aeab72e33f6a30f1a87d1b5444fd169d536ce914/docs/api-rate-limiting.md,
+    "When a limit is reached"); one limiter, per IP address, serves both hosts.
+    """
+    return httpx2.Response(
+        429,
+        json={"error": True, "reason": "Minutely API request limit exceeded. Please try again in one minute."},
+        headers={
+            "X-RateLimit-Limit": "600.0",
+            "X-RateLimit-Remaining": "0.0",
+            "X-RateLimit-Window": "60",
+            "X-RateLimit-Reset": "1800000060",
+            "Retry-After": "42",
+        },
     )
 
 
@@ -146,19 +167,27 @@ async def test_sends_its_user_agent(clients: Clients, fake: FakeTransport, host:
     assert request.headers["Accept"] == "application/json"
 
 
-async def test_paces_one_request_every_2_seconds(clients: Clients, fake: FakeTransport, clock: TestClock) -> None:
-    """The second of two back-to-back calls on one client waits 2 seconds for its turn: there is no burst."""
+def test_free_api_budget_is_the_documented_limits() -> None:
+    """The production budget paces at ``PACE`` and lets at most five requests be in flight, Open-Meteo's queue limit."""
+    budget = free_api_budget()
+
+    assert budget.rate == PACE
+    assert budget.max_in_flight == 5  # noqa: PLR2004 -- the free API's documented concurrency limit
+
+
+async def test_paces_one_request_a_second(clients: Clients, fake: FakeTransport, clock: TestClock) -> None:
+    """The second of two back-to-back calls on one client waits a second for its turn: there is no burst."""
     fake.reply("GET", "/v1/forecast", recorded("forecast.json"))
 
     await clients.forecast.get_forecast(latitude=52.52, longitude=13.41)
     await clients.forecast.get_forecast(latitude=52.52, longitude=13.41)
 
     assert len(fake.calls) == 2  # noqa: PLR2004 -- the two calls made
-    assert clock.now == pytest.approx(2.0)
+    assert clock.now == pytest.approx(1.0)
 
 
-async def test_each_client_paces_itself(clients: Clients, fake: FakeTransport, clock: TestClock) -> None:
-    """A call on one client does not wait for the other client's turn: each host has a budget of its own."""
+async def test_both_clients_share_one_pace(clients: Clients, fake: FakeTransport, clock: TestClock) -> None:
+    """A call on one client waits for the other client's turn: the two hosts spend from one per-IP budget."""
     fake.reply("GET", "/v1/forecast", recorded("forecast.json"))
     fake.reply("GET", "/v1/archive", recorded("archive.json"))
 
@@ -166,7 +195,20 @@ async def test_each_client_paces_itself(clients: Clients, fake: FakeTransport, c
     await clients.archive.get_archive(latitude=52.52, longitude=13.41, start_date="2026-10-19", end_date="2026-10-26")
 
     assert len(fake.calls) == 2  # noqa: PLR2004 -- the two calls made
-    assert clock.now == 0
+    assert clock.now == pytest.approx(1.0)
+
+
+async def test_throttle_on_one_host_pauses_the_other(clients: Clients, fake: FakeTransport, clock: TestClock) -> None:
+    """A 429 from the forecast host pauses the archive client too: its next call waits out the ``Retry-After``."""
+    fake.reply("GET", "/v1/forecast", throttled())
+    fake.reply("GET", "/v1/archive", recorded("archive.json"))
+
+    with pytest.raises(RateLimitError):
+        await clients.forecast.get_forecast(latitude=52.52, longitude=13.41)
+    await clients.archive.get_archive(latitude=52.52, longitude=13.41, start_date="2026-10-19", end_date="2026-10-26")
+
+    assert [request.url.host for request in fake.calls] == ["api.open-meteo.com", "archive-api.open-meteo.com"]
+    assert clock.now == pytest.approx(42.0)  # the 429's Retry-After, waited by the other host's call
 
 
 @pytest.mark.parametrize("host", HOSTS, ids=[host.name for host in HOSTS])
@@ -187,21 +229,7 @@ async def test_throttle_raises_rate_limit_error(
     clients: Clients, fake: FakeTransport, clock: TestClock, host: Host
 ) -> None:
     """A 429 whose ``Retry-After`` is past what a retry waits raises at once, carrying the delay, and is not re-sent."""
-    # Not recorded: provoking a 429 would break the terms. Status, headers and body are the free API's example in
-    # Open-Meteo's own docs (https://github.com/open-meteo/open-meteo/blob/aeab72e33f6a30f1a87d1b5444fd169d536ce914/
-    # docs/api-rate-limiting.md, "When a limit is reached"); both hosts share that limiter.
-    throttled = httpx2.Response(
-        429,
-        json={"error": True, "reason": "Minutely API request limit exceeded. Please try again in one minute."},
-        headers={
-            "X-RateLimit-Limit": "600.0",
-            "X-RateLimit-Remaining": "0.0",
-            "X-RateLimit-Window": "60",
-            "X-RateLimit-Reset": "1800000060",
-            "Retry-After": "42",
-        },
-    )
-    fake.reply("GET", host.path, throttled)
+    fake.reply("GET", host.path, throttled())
 
     with pytest.raises(RateLimitError) as raised:
         await host.read(clients)

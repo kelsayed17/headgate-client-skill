@@ -14,6 +14,12 @@ the grid cell's location, then one block per kind of series asked for (``hourly`
   holds only the requested ones, so a block is a map from each name (``time`` too) to its values, not a model with a
   field per variable. Values keep their JSON type: a temperature is a ``float``, a ``weather_code`` or
   ``precipitation_probability`` an ``int``, a ``time`` or ``sunrise`` a ``Time``, a gap ``None``.
+
+  Why aliases, not a model: a ``Series`` model with a ``time`` field and the variables typed through
+  ``__pydantic_extra__: dict[str, list[Value]]`` was tried first. pydantic refuses that annotation with ``| None``
+  ("must be ``dict[str, ...]``"), and without it ty reports ``invalid-mutable-override`` against ``BaseModel``'s own
+  ``dict[str, Any] | None``. A typed map is the form that passes both. It is only for keys the request chooses: a block
+  whose keys are fixed by the API is a model with one field per key.
 * **Times are local and carry no offset.** In the default ``timeformat=iso8601`` a time is ``"2026-10-27T07:00"`` (a
   day is ``"2026-10-27"``) in the ``timezone`` asked for, GMT unless one is; add ``utc_offset_seconds`` for UTC. With
   ``timeformat=unixtime`` each time is an ``int`` of seconds since the epoch, UTC. ``Time`` takes either, as sent.
@@ -32,8 +38,12 @@ from pydantic import BaseModel, ConfigDict
 type Time = str | int
 """A time as sent: ISO 8601 local time (``"2026-10-27T07:00"``) or day, or Unix seconds with ``timeformat=unixtime``."""
 
-type Value = int | float | Time | None
-"""One value of a variable: a number, a time (``sunrise``, ``sunset``), or ``None`` where the model has no data."""
+type Value = float | Time | None
+"""One value of a variable: a number, a time (``sunrise``, ``sunset``), or ``None`` where the model has no data.
+
+``Time`` already holds ``int``, so a JSON integer (a ``weather_code``) decodes to an ``int`` and a JSON fraction to a
+``float``: pydantic's union picks the exact type.
+"""
 
 type Series = dict[str, list[Value]]
 """One block of series (``hourly``, ``daily``, ``minutely_15``): ``time`` and each variable asked for, to its values.
