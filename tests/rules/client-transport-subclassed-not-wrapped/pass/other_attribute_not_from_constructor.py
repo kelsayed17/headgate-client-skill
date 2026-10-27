@@ -1,8 +1,7 @@
 class Probe(httpx2.AsyncBaseTransport):
-    def __init__(self, inner) -> None:
-        self._inner = inner
-        self._seen = None
+    def __init__(self, limiter) -> None:
+        self._limiter = limiter
 
     async def handle_async_request(self, request):
-        self._seen = request
-        return await self._seen.handle_async_request(request)
+        await self._limiter.acquire()
+        return await super().handle_async_request(request)

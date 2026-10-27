@@ -7,14 +7,17 @@
 #
 # Scope: every module of the package.
 #
-# Reported: a call `self.<attr>.handle_async_request(...)` (awaited or not) inside a function `handle_async_request`
-# of a class, when that same class has an `__init__` that stores one of its parameters as `self.<attr>`
-# (`self._inner = inner`, annotated or not). Nested classes and classes defined in functions are read like any other.
-# The call to `super().handle_async_request(...)` is not reported.
+# Reported: inside a method `handle_async_request` of a class, a call `self.<attr>.handle_async_request(...)`
+# (awaited or not), however `<attr>` was set: from an `__init__` parameter, a default fallback (`inner or Default()`),
+# a dataclass or annotated field, or a transport the class builds itself. The same call through a local alias of such
+# an attribute in the same method (`inner = self._inner; await inner.handle_async_request(...)`) is reported too.
+# Nested classes and classes defined in functions are read like any other. `super().handle_async_request(...)` is not
+# reported.
 #
-# DISCLOSED: an attribute assigned from something other than an `__init__` parameter (a transport the class builds
-# itself), a wrapped transport reached through a local alias (`inner = self._inner; inner.handle_async_request(...)`)
-# and a wrapper that stores its argument in a base class's attribute are not read.
+# DISCLOSED: a wrapped transport reached by any other route is not read: a local alias bound through a call or
+# unpacking (`inner = get_inner(self)`, `(inner,) = ...`), an alias made in another method, a transport held in a
+# module global or a container (`self._chain[0].handle_async_request(...)`), a forwarding helper method of the same
+# class, and a call on `self.<attr>` outside a method named `handle_async_request`.
 #
 # NEW in this tool (anti-goal 6 of the design).
 id: client-transport-subclassed-not-wrapped
@@ -27,26 +30,22 @@ note: >-
 files:
   - '*.py'
 rule:
-  pattern: self.$ATTR.handle_async_request($$$ARGS)
+  kind: call
   inside:
     stopBy: end
     kind: function_definition
     has: {field: name, regex: '^handle_async_request$'}
-    inside:
-      kind: block
-      inside:
-        kind: class_definition
-        has:
-          stopBy: end
-          kind: assignment
-          all:
-            - has: {field: left, pattern: self.$ATTR}
-            - has: {field: right, pattern: $PARAM}
-            - inside:
-                stopBy: end
-                kind: function_definition
-                all:
-                  - has: {field: name, regex: '^__init__$'}
-                  - has:
-                      field: parameters
-                      has: {stopBy: end, kind: identifier, pattern: $PARAM}
+    inside: {kind: block, inside: {kind: class_definition}}
+  any:
+    - pattern: self.$ATTR.handle_async_request($$$ARGS)
+    - all:
+        - pattern: $ALIAS.handle_async_request($$$ARGS)
+        - inside:
+            stopBy: end
+            kind: function_definition
+            has:
+              stopBy: end
+              kind: assignment
+              all:
+                - has: {field: left, pattern: $ALIAS}
+                - has: {field: right, pattern: self.$ATTR}
