@@ -14,7 +14,9 @@ set nothing. Reported:
   ``headgate[curl,msgspec]``) declares it, in ``[project].dependencies``, any list of
   ``[project.optional-dependencies]`` or any list of ``[dependency-groups]``; names and extras compare as PEP 503
   normalised names, and an entry that is not a valid requirement (an ``include-group`` table, a typo) declares
-  nothing. Reported at the first import of the flavour, as is a missing or unreadable ``pyproject.toml``.
+  nothing. Reported at the first import of the flavour, as is a ``pyproject.toml`` that is missing, unreadable, not
+  UTF-8 or not valid TOML, or whose ``[project]``, ``[project.optional-dependencies]`` or ``[dependency-groups]`` is
+  not a table, or whose requirement list there is not a list.
 
 A package importing neither flavour declares nothing and is not reported.
 """
@@ -97,22 +99,42 @@ def detect_flavour(modules: dict[Path, SgRoot]) -> Flavour | None:
     return next(iter(flavours)) if len(flavours) == 1 else None
 
 
-def _requirements(data: dict[str, object]) -> Iterator[object]:
-    project = data.get("project")
-    if isinstance(project, dict):
-        yield from project.get("dependencies", [])
-        optional = project.get("optional-dependencies", {})
-        if isinstance(optional, dict):
-            for group in optional.values():
-                yield from group if isinstance(group, list) else []
-    groups = data.get("dependency-groups", {})
-    if isinstance(groups, dict):
-        for group in groups.values():
-            yield from group if isinstance(group, list) else []
+class _MalformedError(ValueError):
+    """A table or list of the pyproject that should hold requirements has another shape."""
+
+    def __init__(self, where: str, shape: str) -> None:
+        super().__init__(f"{where} is not a {shape}")
 
 
-def _declares(data: dict[str, object], flavour: Flavour) -> bool:
-    for entry in _requirements(data):
+def _table(value: object, where: str) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise _MalformedError(where, "table")
+    return {str(key): item for key, item in value.items()}
+
+
+def _list(value: object, where: str) -> list[object]:
+    if not isinstance(value, list):
+        raise _MalformedError(where, "list")
+    items: list[object] = list(value)
+    return items
+
+
+def _requirements(data: dict[str, object]) -> list[object]:
+    """Return every entry of R4's three requirement places; raise ``_MalformedError`` for a misshapen container."""
+    entries: list[object] = []
+    project = _table(data.get("project", {}), "[project]")
+    entries.extend(_list(project.get("dependencies", []), "[project].dependencies"))
+    optional = _table(project.get("optional-dependencies", {}), "[project.optional-dependencies]")
+    for name, group in optional.items():
+        entries.extend(_list(group, f"[project.optional-dependencies].{name}"))
+    groups = _table(data.get("dependency-groups", {}), "[dependency-groups]")
+    for name, group in groups.items():
+        entries.extend(_list(group, f"[dependency-groups].{name}"))
+    return entries
+
+
+def _declares(entries: list[object], flavour: Flavour) -> bool:
+    for entry in entries:
         if not isinstance(entry, str):
             continue
         try:
@@ -125,15 +147,30 @@ def _declares(data: dict[str, object], flavour: Flavour) -> bool:
     return False
 
 
+def _entries(pyproject: Path) -> list[object] | str:
+    """Return the requirement entries of ``pyproject``, or why it cannot be read for them."""
+    try:
+        text = pyproject.read_text(encoding="utf-8")
+    except UnicodeDecodeError as error:
+        return f"{pyproject} is not UTF-8 ({error.reason})"
+    except OSError as error:
+        return f"{pyproject} cannot be read ({error.strerror or error})"
+    try:
+        return _requirements(tomllib.loads(text))
+    except tomllib.TOMLDecodeError as error:
+        return f"{pyproject} is not valid TOML ({error})"
+    except _MalformedError as error:
+        return f"{pyproject}: {error}"
+
+
 def _extra_problem(pkg: Package, flavour: Flavour) -> str | None:
     pyproject = nearest_pyproject(pkg.root)
     if pyproject is None:
         return f"the package imports {flavour} but no pyproject.toml at or above it declares headgate[{flavour}]"
-    try:
-        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-    except tomllib.TOMLDecodeError as error:
-        return f"{pyproject} is not valid TOML ({error}), so it cannot declare headgate[{flavour}]"
-    if _declares(data, flavour):
+    entries = _entries(pyproject)
+    if isinstance(entries, str):
+        return f"{entries}, so it cannot declare headgate[{flavour}]"
+    if _declares(entries, flavour):
         return None
     return (
         f"the package imports {flavour} but {pyproject} does not declare headgate[{flavour}] in "

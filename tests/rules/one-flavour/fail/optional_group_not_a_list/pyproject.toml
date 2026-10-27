@@ -1,0 +1,6 @@
+[project]
+name = "one-client"
+version = "0"
+
+[project.optional-dependencies]
+a = { b = 5 }

@@ -9,9 +9,10 @@ Reported:
   an ``__all__``, an import), one finding per statement. Comments are allowed;
 * no ``models.py``; no ``docs_paths.json`` (its contents are checked elsewhere);
 * no tests directory holding both ``test_client.py`` and ``test_method_names.py``. The tests directory is
-  ``<package>/tests/``, or ``tests/<package name>/`` under the project root, the directory of the nearest
-  ``pyproject.toml`` at or above the package (with no ``pyproject.toml`` only the first is looked for). When one of
-  them exists, each file it lacks is named;
+  ``<package>/tests/``, ``tests/<package name>/`` beside the package (``<package>/../tests/<package name>/``, as the
+  conventions draw it; ruling R14), or ``tests/<package name>/`` under the project root, the directory of the nearest
+  ``pyproject.toml`` at or above the package (with no ``pyproject.toml`` only the first two are looked for). When one
+  of them exists, each file it lacks is named;
 * a call to ``self.paginate(...)`` in any module of the package with no ``pagination.py`` beside it, at the call.
 
 A missing file is reported at line 1 of ``client.py``, so an allow comment above its first statement exempts it. An
@@ -74,11 +75,11 @@ def _check_init(pkg: Package, modules: dict[Path, SgRoot], findings: list[Findin
 
 
 def _test_dirs(pkg: Package) -> list[Path]:
-    candidates = [pkg.root / "tests"]
+    candidates = [pkg.root / "tests", pkg.root.parent / "tests" / pkg.root.name]
     pyproject = nearest_pyproject(pkg.root)
     if pyproject is not None:
         candidates.append(pyproject.parent / "tests" / pkg.root.name)
-    return candidates
+    return list(dict.fromkeys(candidates))
 
 
 def _check_tests(pkg: Package, findings: list[Finding]) -> None:

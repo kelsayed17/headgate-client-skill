@@ -1,0 +1,6 @@
+dependency-groups = 5
+
+[project]
+name = "one-client"
+version = "0"
+dependencies = []

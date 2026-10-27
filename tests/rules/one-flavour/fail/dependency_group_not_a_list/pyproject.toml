@@ -1,0 +1,7 @@
+[project]
+name = "one-client"
+version = "0"
+dependencies = []
+
+[dependency-groups]
+dev = { b = 5 }

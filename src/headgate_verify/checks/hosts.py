@@ -17,9 +17,10 @@ name another client class of the package (by its bare class name, in any module)
   class's base URL also names (hosts compare case-insensitively, ports ignored);
 * a string that holds an absolute ``http(s)://`` URL whose host differs from the class's base URL host, passed as the
   URL (first argument or ``url=``) of ``self.get``/``post``/``put``/``patch``/``delete``/``head``/``stream``/
-  ``paginate`` in that class: a literal (plain, f- or t-string), a module-level constant of the class's module, or a
-  class attribute read as ``self.<name>`` or ``<Class>.<name>``. When the class's base URL host cannot be read (no
-  module-level string holds it), every such absolute URL is reported, since it cannot be shown to stay on the host.
+  ``paginate`` in that class: a literal (plain, f- or t-string), a module-level constant of the class's module (or one
+  it imports from a sibling module, read there), or a class attribute read as ``self.<name>`` or ``<Class>.<name>``.
+  When the class's base URL host cannot be read (no module-level string holds it), every such absolute URL is
+  reported, since it cannot be shown to stay on the host.
 
 A base URL name imported from a sibling module (``from .hosts import API``) has its host read from that module's
 module-level assignment. A URL the API itself returned is followed freely: a pager such as headgate's ``NextUrl``
@@ -184,12 +185,11 @@ def _base_url(cls: _Class) -> SgNode | None:
     return None
 
 
-def _constant_host(name: str, root: SgRoot, modules: dict[Path, SgRoot]) -> str | None:
-    """Return the host of the module-level string ``name`` of ``root``, following one sibling-module import."""
+def _constant_text(name: str, root: SgRoot, modules: dict[Path, SgRoot]) -> str | None:
+    """Return the module-level string ``name`` of ``root`` holds, following one sibling-module import."""
     value = _assignments(root.root()).get(name)
     if value is not None:
-        text = _string_text(value)
-        return None if text is None else _host(text)
+        return _string_text(value)
     imported = _imports(root).get(name)
     if imported is None:
         return None
@@ -197,9 +197,14 @@ def _constant_host(name: str, root: SgRoot, modules: dict[Path, SgRoot]) -> str 
     for path, sibling in modules.items():
         if path.stem == stem:
             value = _assignments(sibling.root()).get(imported.name)
-            text = None if value is None else _string_text(value)
-            return None if text is None else _host(text)
+            return None if value is None else _string_text(value)
     return None
+
+
+def _constant_host(name: str, root: SgRoot, modules: dict[Path, SgRoot]) -> str | None:
+    """Return the host of the module-level string ``name`` of ``root``, following one sibling-module import."""
+    text = _constant_text(name, root, modules)
+    return None if text is None else _host(text)
 
 
 @dataclass(frozen=True)
@@ -298,15 +303,15 @@ def _url_argument(call: SgNode) -> SgNode | None:
     return None
 
 
-def _url_text(argument: SgNode, cls: _Class) -> str | None:
+def _url_text(argument: SgNode, cls: _Class, modules: dict[Path, SgRoot]) -> str | None:
     """Return the string a verb's URL argument holds when it is a literal, a module constant or a class attribute."""
     literal = _string_text(argument)
     if literal is not None:
         return literal
-    value: SgNode | None = None
     if argument.kind() == "identifier":
-        value = _assignments(cls.root.root()).get(argument.text())
-    elif argument.kind() == "attribute":
+        return _constant_text(argument.text(), cls.root, modules)
+    value: SgNode | None = None
+    if argument.kind() == "attribute":
         owner, attribute = argument.field("object"), argument.field("attribute")
         body = cls.node.field("body")
         if owner is not None and attribute is not None and body is not None and owner.text() in {"self", cls.name}:
@@ -314,13 +319,14 @@ def _url_text(argument: SgNode, cls: _Class) -> str | None:
     return None if value is None else _string_text(value)
 
 
-def _check_verbs(cls: _Class, host: str | None, base_name: str | None, findings: list[Finding]) -> None:
+def _check_verbs(cls: _Class, base: _Base | None, modules: dict[Path, SgRoot], findings: list[Finding]) -> None:
+    host, base_name = (None, None) if base is None else (base.host, base.name)
     for call in cls.node.find_all(pattern="self.$VERB($$$)"):
         verb = call.get_match("VERB")
         if verb is None or verb.text() not in _VERBS:
             continue
         argument = _url_argument(call)
-        text = None if argument is None else _url_text(argument, cls)
+        text = None if argument is None else _url_text(argument, cls, modules)
         url_host = None if text is None else _host(text)
         if url_host is None or url_host == host:
             continue
@@ -350,6 +356,6 @@ def check(pkg: Package, modules: dict[Path, SgRoot], config: Config) -> list[Fin
         base = None if cls.name in chained else _read_base(cls, modules, findings)
         if base is not None:
             bases.append(base)
-        _check_verbs(cls, None if base is None else base.host, None if base is None else base.name, findings)
+        _check_verbs(cls, base, modules, findings)
     _check_distinct(bases, findings)
     return findings

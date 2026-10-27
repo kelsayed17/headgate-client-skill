@@ -10,6 +10,7 @@ cannot express (another package name, a pyproject above the package, tests under
 ``tmp_path``.
 """
 
+import os
 import shutil
 from pathlib import Path
 
@@ -27,6 +28,7 @@ _CLAUSES: dict[str, tuple[str, int]] = {
     "one-class-per-host/fail/merged_hosts": ("passes an absolute URL on host data.two.example", 2),
     "one-class-per-host/fail/merged_hosts_constant": ("passes an absolute URL on host data.two.example", 1),
     "one-class-per-host/fail/merged_hosts_class_attribute": ("passes an absolute URL on host data.two.example", 1),
+    "one-class-per-host/fail/merged_hosts_sibling_constant": ("passes an absolute URL on host b.example", 1),
     "one-class-per-host/fail/shared_base": ("subclasses the client class _Base", 2),
     "one-class-per-host/fail/shared_base_in_another_module": ("subclasses the client class Base", 1),
     "one-class-per-host/fail/shared_mixin": ("has a base besides AsyncBaseClient: _Helpers", 2),
@@ -56,6 +58,31 @@ _CLAUSES: dict[str, tuple[str, int]] = {
     "one-flavour/fail/extra_in_a_tool_table": ("does not declare headgate[pydantic]", 1),
     "one-flavour/fail/no_pyproject": ("no pyproject.toml", 1),
     "one-flavour/fail/invalid_toml": ("is not valid TOML", 1),
+    "one-flavour/fail/not_utf8": (
+        "is not UTF-8 (invalid continuation byte), so it cannot declare headgate[msgspec]",
+        1,
+    ),
+    "one-flavour/fail/project_not_a_table": ("[project] is not a table, so it cannot declare headgate[msgspec]", 1),
+    "one-flavour/fail/dependencies_not_a_list": (
+        "[project].dependencies is not a list, so it cannot declare headgate[msgspec]",
+        1,
+    ),
+    "one-flavour/fail/optional_dependencies_not_a_table": (
+        "[project.optional-dependencies] is not a table, so it cannot declare headgate[msgspec]",
+        1,
+    ),
+    "one-flavour/fail/optional_group_not_a_list": (
+        "[project.optional-dependencies].a is not a list, so it cannot declare headgate[msgspec]",
+        1,
+    ),
+    "one-flavour/fail/dependency_groups_not_a_table": (
+        "[dependency-groups] is not a table, so it cannot declare headgate[msgspec]",
+        1,
+    ),
+    "one-flavour/fail/dependency_group_not_a_list": (
+        "[dependency-groups].dev is not a list, so it cannot declare headgate[msgspec]",
+        1,
+    ),
 }
 
 
@@ -134,11 +161,43 @@ def test_tests_under_the_project_root(tmp_path: Path) -> None:
 
 
 def test_tests_under_the_root_need_a_pyproject(tmp_path: Path) -> None:
-    """With no pyproject there is no project root, so only ``<package>/tests/`` is looked for."""
-    _write(tmp_path / "src" / "lda", _COMPLETE_PACKAGE)
+    """With no pyproject there is no project root: ``tests/lda`` two levels up is neither a root's nor a sibling."""
+    _write(tmp_path / "src" / "clients" / "lda", _COMPLETE_PACKAGE)
     _write(tmp_path / "tests" / "lda", {"test_client.py": "", "test_method_names.py": ""})
     (finding,) = _own([tmp_path / "src"], "package-layout")
     assert "has no tests directory" in finding
+    assert str(tmp_path / "src" / "clients" / "tests" / "lda") in finding
+
+
+def test_tests_beside_the_package(tmp_path: Path) -> None:
+    """R14: ``<package>/../tests/<package name>/`` holds the tests, as the spec draws it, with no pyproject needed."""
+    _write(tmp_path / "clients" / "lda", _COMPLETE_PACKAGE)
+    _write(tmp_path / "clients" / "tests" / "lda", {"test_client.py": "", "test_method_names.py": ""})
+    assert _own([tmp_path / "clients" / "lda"], "package-layout") == []
+
+
+def test_tests_beside_the_package_missing_a_file(tmp_path: Path) -> None:
+    """A sibling tests directory that exists but lacks a file names the file."""
+    _write(tmp_path / "clients" / "lda", _COMPLETE_PACKAGE)
+    _write(tmp_path / "clients" / "tests" / "lda", {"test_client.py": ""})
+    (finding,) = _own([tmp_path / "clients" / "lda"], "package-layout")
+    assert f"the tests directory {tmp_path / 'clients' / 'tests' / 'lda'} has no test_method_names.py" in finding
+
+
+def test_unreadable_pyproject_is_a_finding(tmp_path: Path) -> None:
+    """A pyproject the verifier cannot open is a finding, not a traceback."""
+    _write(tmp_path / "lda", {"client.py": "import msgspec\n"})
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text("[project]\nname = 'x'\ndependencies = ['headgate[msgspec]']\n")
+    pyproject.chmod(0)
+    try:
+        if os.access(pyproject, os.R_OK):
+            pytest.skip("this user reads a mode-000 file (root)")
+        (finding,) = _own([tmp_path / "lda"], "one-flavour")
+    finally:
+        pyproject.chmod(0o644)
+    assert "cannot be read" in finding
+    assert "so it cannot declare headgate[msgspec]" in finding
 
 
 def test_flavour_extra_declared_in_a_pyproject_above_the_package(tmp_path: Path) -> None:
