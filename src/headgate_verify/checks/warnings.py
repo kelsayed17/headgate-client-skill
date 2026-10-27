@@ -9,26 +9,30 @@ into a return value, or into another exception type, changes what the caller see
 confirm the handler re-raises a ``headgate.errors`` type, or that the swallowed error is a documented answer, and to
 record which with an allow comment carrying the reason. ``try``/``finally`` with no handler is not reported.
 
-``client-cache-with-bearer-auth``: a class (of any module) that passes a cache and also builds an auth that sets an
-``Authorization: Bearer`` header is reported once, at the first cache site. A *cache* is a call ``HttpCache(...)`` or
-a keyword argument ``cache=`` whose value is not ``None``. A *bearer auth* is a call to ``BearerAuth``, to
-``CachedTokenAuth`` or to a class of the package that subclasses either (directly or through other classes of the
-package, by bare class name; a subclass whose own ``token_headers`` assignment does not name ``Authorization`` is
-not one), or to ``StaticHeaderAuth`` with a dict literal holding an ``Authorization`` key (any case) whose value is
-a string starting ``Bearer``. Calls may be spelled bare or as an attribute (``headgate.BearerAuth``).
+``client-cache-with-bearer-auth``: a class (of any module) that builds an ``HttpCache`` whose partition is not shown to
+be per credential, and also builds an auth that sets an ``Authorization: Bearer`` header, is reported once, at the
+first such ``HttpCache(...)`` call. The cache is judged by its ``partition=`` argument (``HttpCache`` is keyword-only):
+absent, or ``Partition.CREDENTIAL`` (spelled bare or as an attribute, ``headgate.Partition.CREDENTIAL``), is the safe
+default and is not reported; ``Partition.SHARED`` is reported; anything else (a module constant, a parameter, a call, a
+``**options`` unpacking) is reported as a partition the check cannot read. A *bearer auth* is a call to ``BearerAuth``,
+to ``CachedTokenAuth`` or to a class of the package that subclasses either (directly or through other classes of the
+package, by bare class name; a subclass whose own ``token_headers`` assignment does not name ``Authorization`` is not
+one), or to ``StaticHeaderAuth`` with a dict literal (first positional argument or ``headers=``) holding an
+``Authorization`` key (any case) whose value is a string starting ``Bearer``. Calls may be spelled bare or as an
+attribute (``headgate.BearerAuth``).
 
-How serious this is depends on headgate. It never stores ``Authorization`` (nor ``Proxy-Authorization``, ``Cookie``,
-a header or query parameter the auth declares, or a URL's userinfo), and under its default
-``HttpCache(partition=Partition.CREDENTIAL)`` it keys every entry by an HMAC of the auth's class and
-``credential_identity()``, so one credential's responses are never served to another, and it refuses at construction
-(``ClientConfigurationError``) an auth that cannot declare its credentials. ``BearerAuth``, ``StaticHeaderAuth`` and
-``CachedTokenAuth`` all declare them. The default combination is therefore safe, and the warning is a prompt to
-confirm it: that the cache keeps the default partition rather than ``Partition.SHARED`` (which shares entries across
-credentials and is only for public data), and that a cached response does not differ by anything the credential does
-not capture. A reviewed combination takes an allow comment with the reason.
+Why only a shared or unreadable partition (controller ruling R15): headgate 0.7.0 never stores ``Authorization``
+(nor ``Proxy-Authorization``, ``Cookie``, a header or query parameter the auth declares, or a URL's userinfo), and
+under the default ``Partition.CREDENTIAL`` keys every entry by an HMAC of the auth's class and
+``credential_identity()``, so one credential's responses are never served to another; it also refuses at construction
+(``ClientConfigurationError``) an auth that cannot declare its credentials, and ``BearerAuth``, ``StaticHeaderAuth``
+and ``CachedTokenAuth`` all declare them. A warning on that default would force an allow comment onto every correct
+cached bearer client. ``Partition.SHARED`` shares entries across credentials and is only for public data, so a bearer
+client that selects it needs a reason. A reviewed combination takes an allow comment with the reason.
 
-DISCLOSED: only the class body is read. A cache or an auth built in a module-level constant, a helper function or a
-parameter (``auth=make_auth()``, ``policy=POLICY``) is not seen, and an auth class that subclasses
+DISCLOSED: only the class body is read, and only an ``HttpCache(...)`` call in it. A cache received as a parameter or
+built in a module-level constant (``policy=POLICY``), or an auth built in a helper function (``auth=make_auth()``), is
+not seen, and an auth class that subclasses
 ``StaticHeaderAuth`` is not tracked. ``except`` clauses in a module the parser cannot read are not seen (the engine
 reports that module as ``parse-error``).
 """
@@ -50,6 +54,7 @@ EXCEPT_RULE = "client-except-needs-review"
 CACHE_RULE = "client-cache-with-bearer-auth"
 _BEARER_SEEDS = frozenset({"BearerAuth", "CachedTokenAuth"})
 _STATIC_HEADER_AUTH = "StaticHeaderAuth"
+_UNREADABLE = "a partition it cannot read"
 _BEARER_VALUE = re.compile(r"^[rRbBuUfFtT]*(?:'''|\"\"\"|'|\")\s*bearer\b", re.IGNORECASE)
 _AUTHORIZATION_KEY = re.compile(r"^[rRbBuUfFtT]*(?:'''|\"\"\"|'|\")authorization(?:'''|\"\"\"|'|\")$", re.IGNORECASE)
 
@@ -125,28 +130,55 @@ def _bearer_auth(call: SgNode, bearer: set[str]) -> str | None:
         return name
     if name == _STATIC_HEADER_AUTH:
         arguments = call.field("arguments")
-        first = next((child for child in arguments.children() if child.is_named()), None) if arguments else None
-        if first is not None and first.kind() == "dictionary" and _dict_sets_bearer(first):
-            return name
+        for argument in arguments.children() if arguments is not None else []:
+            if argument.kind() == "keyword_argument":
+                key, value = argument.field("name"), argument.field("value")
+                headers = value if key is not None and key.text() == "headers" else None
+            else:
+                headers = argument if argument.is_named() and argument.kind() != "comment" else None
+            if headers is not None and headers.kind() == "dictionary" and _dict_sets_bearer(headers):
+                return name
+            if headers is not None:
+                break
     return None
 
 
-def _cache_line(cls: SgNode) -> int | None:
-    """Return the 1-based line of the first cache site in ``cls``: ``HttpCache(...)`` or ``cache=`` not ``None``."""
-    lines = [
-        call.range().start.line
+def _partition_risk(call: SgNode) -> str | None:
+    """Return how an ``HttpCache(...)`` call's partition is not shown to be per credential, or None when it is."""
+    arguments = call.field("arguments")
+    for argument in arguments.children() if arguments is not None else []:
+        if argument.kind() in {"dictionary_splat", "list_splat"}:
+            return _UNREADABLE
+        key, value = argument.field("name"), argument.field("value")
+        if argument.kind() == "keyword_argument" and key is not None and key.text() == "partition":
+            member = _partition_member(value)
+            return None if member == "CREDENTIAL" else "Partition.SHARED" if member == "SHARED" else _UNREADABLE
+    return None
+
+
+def _partition_member(node: SgNode | None) -> str | None:
+    """Return ``X`` for ``Partition.X`` (bare or as an attribute of a module), or None for any other node."""
+    if node is None or node.kind() != "attribute":
+        return None
+    member, owner = node.field("attribute"), node.field("object")
+    if member is None or owner is None:
+        return None
+    owner_name = _bare_name(owner)
+    return member.text() if owner_name == "Partition" else None
+
+
+def _cache_risk(cls: SgNode) -> tuple[int, str] | None:
+    """Return the 1-based line and kind of the first ``HttpCache(...)`` in ``cls`` that is not per credential."""
+    risks = [
+        (call.range().start.line + 1, risk)
         for call in cls.find_all(kind="call")
-        if _bare_name(call.field("function")) == "HttpCache"
+        if _bare_name(call.field("function")) == "HttpCache" and (risk := _partition_risk(call)) is not None
     ]
-    for keyword in cls.find_all(kind="keyword_argument"):
-        name, value = keyword.field("name"), keyword.field("value")
-        if name is not None and name.text() == "cache" and value is not None and value.text() != "None":
-            lines.append(keyword.range().start.line)
-    return min(lines) + 1 if lines else None
+    return min(risks) if risks else None
 
 
 def check_cache(pkg: Package, modules: dict[Path, SgRoot], config: Config) -> list[Finding]:
-    """Return a warning for each class that passes a cache and builds a bearer auth."""
+    """Return a warning for each class that builds a bearer auth and a cache not shown to be per credential."""
     del config
     bearer = _bearer_classes(modules)
     findings: dict[tuple[Path, int], Finding] = {}
@@ -156,21 +188,21 @@ def check_cache(pkg: Package, modules: dict[Path, SgRoot], config: Config) -> li
             continue
         for cls in root.root().find_all(kind="class_definition"):
             name = cls.field("name")
-            line = _cache_line(cls)
+            risk = _cache_risk(cls)
             auth = next(
                 (found for call in cls.find_all(kind="call") if (found := _bearer_auth(call, bearer)) is not None),
                 None,
             )
-            if name is None or line is None or auth is None or (path, line) in findings:
+            if name is None or risk is None or auth is None or (path, risk[0]) in findings:
                 continue
+            line, how = risk
             findings[path, line] = Finding(
                 CACHE_RULE,
                 path,
                 line,
-                f"the client class {name.text()} sets a cache and the bearer auth {auth}; headgate keeps "
-                "Authorization out of the cache and partitions entries by credential, so confirm the HttpCache keeps "
-                "the default Partition.CREDENTIAL (Partition.SHARED shares entries across credentials) and that no "
-                "cached response differs by anything the credential does not capture, or allow this with the reason",
+                f"the client class {name.text()} builds the bearer auth {auth} and caches with {how}; Partition.SHARED "
+                "shares cached entries across credentials, so use the default Partition.CREDENTIAL, or allow this "
+                "with the reason every response is public",
                 "warning",
             )
     return list(findings.values())

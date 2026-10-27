@@ -87,18 +87,42 @@ _CLAUSES: dict[str, tuple[str, int]] = {
     "client-except-needs-review/fail/reraises": ("must re-raise a headgate.errors type", 1),
     "client-except-needs-review/fail/two_handlers": ("must re-raise a headgate.errors type", 2),
     "client-except-needs-review/fail/in_another_module": ("must re-raise a headgate.errors type", 1),
-    "client-cache-with-bearer-auth/fail/bearer_auth": ("sets a cache and the bearer auth BearerAuth", 1),
-    "client-cache-with-bearer-auth/fail/http_cache_constructed": ("sets a cache and the bearer auth BearerAuth", 1),
-    "client-cache-with-bearer-auth/fail/cached_token_auth": ("sets a cache and the bearer auth _Mint", 1),
-    "client-cache-with-bearer-auth/fail/cached_token_auth_subscripted_subclass_chain": (
-        "sets a cache and the bearer auth _Mint",
+    "client-cache-with-bearer-auth/fail/shared_bearer_auth": (
+        "the bearer auth BearerAuth and caches with Partition.SHARED",
         1,
     ),
-    "client-cache-with-bearer-auth/fail/static_header_bearer": (
-        "sets a cache and the bearer auth StaticHeaderAuth",
+    "client-cache-with-bearer-auth/fail/shared_cached_token_auth": (
+        "the bearer auth _Mint and caches with Partition.SHARED",
         1,
     ),
-    "client-cache-with-bearer-auth/fail/attribute_spelling": ("sets a cache and the bearer auth BearerAuth", 1),
+    "client-cache-with-bearer-auth/fail/shared_subclass_chain": (
+        "the bearer auth _Mint and caches with Partition.SHARED",
+        1,
+    ),
+    "client-cache-with-bearer-auth/fail/shared_static_header_bearer": (
+        "the bearer auth StaticHeaderAuth and caches with Partition.SHARED",
+        1,
+    ),
+    "client-cache-with-bearer-auth/fail/shared_static_header_keyword": (
+        "the bearer auth StaticHeaderAuth and caches with Partition.SHARED",
+        1,
+    ),
+    "client-cache-with-bearer-auth/fail/shared_attribute_spelling": (
+        "the bearer auth BearerAuth and caches with Partition.SHARED",
+        1,
+    ),
+    "client-cache-with-bearer-auth/fail/unreadable_partition_constant": (
+        "the bearer auth BearerAuth and caches with a partition it cannot read",
+        1,
+    ),
+    "client-cache-with-bearer-auth/fail/unreadable_partition_parameter": (
+        "the bearer auth BearerAuth and caches with a partition it cannot read",
+        1,
+    ),
+    "client-cache-with-bearer-auth/fail/unreadable_partition_unpacked": (
+        "the bearer auth BearerAuth and caches with a partition it cannot read",
+        1,
+    ),
 }
 
 
