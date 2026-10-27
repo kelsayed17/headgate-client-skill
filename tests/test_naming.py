@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Khaled Elsayed
 # SPDX-License-Identifier: MIT
 
-"""Tests for ``headgate_verify.naming``: the path-to-name algorithm, the docs snapshot and the name check.
+"""Tests for the method-name helper: the path-to-name algorithm, the docs snapshot, the endpoint reader, the check.
 
 The ``endpoint_name`` values are the measured renames of the project this algorithm came from, and are the spec.
 """
@@ -12,16 +12,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from headgate_verify.naming import (
-    DEFAULT_FILLER,
-    DocsSnapshot,
-    Endpoint,
-    SnapshotError,
-    check_names,
-    client_endpoints,
-    endpoint_name,
-    load_snapshot,
-)
+from headgate_verify.endpoints import client_endpoints
+from headgate_verify.naming import DEFAULT_FILLER, check_names, endpoint_name
+from headgate_verify.snapshot import DocsSnapshot, Endpoint, SnapshotError, load_snapshot
 
 if TYPE_CHECKING:
     from pathlib import Path

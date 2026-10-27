@@ -13,6 +13,7 @@ cannot express (another package name, a pyproject above the package, tests under
 import os
 import shutil
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from ast_grep_py import SgRoot
@@ -21,6 +22,9 @@ from headgate_verify.checks import CHECKS
 from headgate_verify.checks.flavour import detect_flavour
 from headgate_verify.checks.models import provider_prefix
 from headgate_verify.engine import verify
+
+if TYPE_CHECKING:
+    from headgate_verify.parsing import Modules
 
 _RULES_DIR = Path(__file__).parent / "rules"
 
@@ -165,7 +169,9 @@ def _own(paths: list[Path], rule: str) -> list[str]:
 def test_every_check_fail_fixture_names_its_clause() -> None:
     """Each fail fixture of a Python check is listed in ``_CLAUSES``, and every listed fixture exists."""
     fixtures = {
-        f"{name}/fail/{entry.name}" for name, _ in CHECKS for entry in sorted((_RULES_DIR / name / "fail").iterdir())
+        f"{check.rule.id}/fail/{entry.name}"
+        for check in CHECKS
+        for entry in sorted((_RULES_DIR / check.rule.id / "fail").iterdir())
     }
     assert fixtures == set(_CLAUSES)
 
@@ -267,7 +273,7 @@ def test_flavour_extra_declared_in_a_pyproject_above_the_package(tmp_path: Path)
     assert _own([tmp_path / "src"], "one-flavour") == []
 
 
-def _modules(sources: dict[str, str]) -> dict[Path, SgRoot]:
+def _modules(sources: dict[str, str]) -> Modules:
     return {Path(name): SgRoot(text, "python") for name, text in sources.items()}
 
 

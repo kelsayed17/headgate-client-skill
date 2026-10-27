@@ -24,23 +24,27 @@ A missing file is reported at line 1 of ``client.py``, so an allow comment above
 from typing import TYPE_CHECKING
 
 from headgate_verify.config import nearest_pyproject
-from headgate_verify.finding import Finding
-from headgate_verify.naming import SnapshotError, load_snapshot
+from headgate_verify.finding import Rule
+from headgate_verify.snapshot import SnapshotError, load_snapshot
+from headgate_verify.syntax import line, statements, string_prefix
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ast_grep_py import SgNode, SgRoot
+    from ast_grep_py import SgNode
 
     from headgate_verify.config import Config
+    from headgate_verify.finding import Finding
     from headgate_verify.package import Package
+    from headgate_verify.parsing import Modules
 
-RULE = "package-layout"
-FIX = (
-    "Add the file the finding names: a docstring-only `__init__.py`, `models.py`, a schema-valid `docs_paths.json`, "
-    "`test_client.py` and `test_method_names.py` in the tests directory, and `pagination.py` beside a paged client."
+RULE = Rule(
+    id="package-layout",
+    severity="error",
+    fix="Add the file the finding names: a docstring-only `__init__.py`, `models.py`, a schema-valid "
+    "`docs_paths.json`, `test_client.py` and `test_method_names.py` in the tests directory, and `pagination.py` "
+    "beside a paged client.",
 )
-"""How to fix a ``package-layout`` finding."""
 _INIT = "__init__.py"
 _DOCS = "docs_paths.json"
 _REQUIRED = ("models.py", _DOCS)
@@ -48,38 +52,39 @@ _TESTS = ("test_client.py", "test_method_names.py")
 _PAGINATION = "pagination.py"
 
 
-def _finding(path: Path, line: int, message: str) -> Finding:
-    return Finding(RULE, path, line, message, "error")
+def _missing(pkg: Package, message: str) -> Finding:
+    """Return a finding for something the package lacks, at line 1 of its ``client.py``."""
+    return RULE.finding(pkg.root / "client.py", 1, message)
 
 
 def _is_docstring(statement: SgNode) -> bool:
     """Return whether ``statement`` is a bare plain string literal (an f- or t-string is no docstring)."""
     children = statement.named_children()
-    if statement.kind() != "expression_statement" or len(children) != 1 or children[0].kind() != "string":
+    if statement.kind() != "expression_statement" or len(children) != 1:
         return False
-    start = children[0].child(0)
-    return start is not None and not any(letter in start.text().lower() for letter in "ft")
+    prefix = string_prefix(children[0])
+    return prefix is not None and not any(letter in prefix for letter in "ft")
 
 
-def _check_init(pkg: Package, modules: dict[Path, SgRoot], findings: list[Finding]) -> None:
+def _check_init(pkg: Package, modules: Modules, findings: list[Finding]) -> None:
     path = pkg.root / _INIT
     if not path.is_file():
-        findings.append(_finding(pkg.root / "client.py", 1, f"the package {pkg.root.name} has no {_INIT}"))
+        findings.append(_missing(pkg, f"the package {pkg.root.name} has no {_INIT}"))
         return
     root = modules.get(path)
     if root is None:
         return
-    statements = [child for child in root.root().children() if child.is_named() and child.kind() != "comment"]
-    has_docstring = bool(statements) and _is_docstring(statements[0])
+    body = statements(root.root())
+    has_docstring = bool(body) and _is_docstring(body[0])
     if not has_docstring:
-        findings.append(_finding(path, 1, f"{_INIT} holds no docstring; it holds a docstring only"))
+        findings.append(RULE.finding(path, 1, f"{_INIT} holds no docstring; it holds a docstring only"))
     findings.extend(
-        _finding(
+        RULE.finding(
             path,
-            statement.range().start.line + 1,
+            line(statement),
             f"{_INIT} holds a docstring only; import from the module that defines a name, never through a re-export",
         )
-        for statement in statements[1 if has_docstring else 0 :]
+        for statement in body[1 if has_docstring else 0 :]
     )
 
 
@@ -96,31 +101,28 @@ def _check_tests(pkg: Package, findings: list[Finding]) -> None:
     existing = [directory for directory in candidates if directory.is_dir()]
     if any(all((directory / name).is_file() for name in _TESTS) for directory in existing):
         return
-    client = pkg.root / "client.py"
     if not existing:
         looked = " or ".join(str(directory) for directory in candidates)
-        findings.append(
-            _finding(client, 1, f"the package {pkg.root.name} has no tests directory (looked for {looked})")
-        )
+        findings.append(_missing(pkg, f"the package {pkg.root.name} has no tests directory (looked for {looked})"))
         return
     directory = existing[0]
     findings.extend(
-        _finding(client, 1, f"the tests directory {directory} has no {name}")
+        _missing(pkg, f"the tests directory {directory} has no {name}")
         for name in _TESTS
         if not (directory / name).is_file()
     )
 
 
-def _check_pagination(pkg: Package, modules: dict[Path, SgRoot], findings: list[Finding]) -> None:
+def _check_pagination(pkg: Package, modules: Modules, findings: list[Finding]) -> None:
     if (pkg.root / _PAGINATION).is_file():
         return
     for path, root in sorted(modules.items()):
         call = root.root().find(pattern="self.paginate($$$)")
         if call is not None:
             findings.append(
-                _finding(
+                RULE.finding(
                     path,
-                    call.range().start.line + 1,
+                    line(call),
                     f"the package calls self.paginate but has no {_PAGINATION}; its pagers and page budgets live there",
                 )
             )
@@ -134,16 +136,16 @@ def _check_snapshot(pkg: Package, findings: list[Finding]) -> None:
     try:
         load_snapshot(path)
     except SnapshotError as error:
-        findings.append(_finding(path, 1, f"{_DOCS} is not a valid docs snapshot: {error}"))
+        findings.append(RULE.finding(path, 1, f"{_DOCS} is not a valid docs snapshot: {error}"))
 
 
-def check(pkg: Package, modules: dict[Path, SgRoot], config: Config) -> list[Finding]:
+def check(pkg: Package, modules: Modules, config: Config) -> list[Finding]:
     """Return the ``package-layout`` findings of ``pkg``."""
     del config
     findings: list[Finding] = []
     _check_init(pkg, modules, findings)
     findings.extend(
-        _finding(pkg.root / "client.py", 1, f"the package {pkg.root.name} has no {name}")
+        _missing(pkg, f"the package {pkg.root.name} has no {name}")
         for name in _REQUIRED
         if not (pkg.root / name).is_file()
     )

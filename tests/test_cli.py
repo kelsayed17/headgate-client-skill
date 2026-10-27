@@ -73,7 +73,7 @@ def test_clean_run_counts_packages_on_stderr(
     _package(tmp_path)
     (tmp_path / "sec").mkdir()
     (tmp_path / "sec" / "client.py").write_text("")
-    monkeypatch.setattr(engine, "verify", lambda _paths, _config=None: [])
+    monkeypatch.setattr(engine, "verify_packages", lambda _packages, _config=None: [])
     assert cli.main([str(tmp_path)]) == 0
     captured = capsys.readouterr()
     assert captured.out == ""
@@ -85,7 +85,7 @@ def test_json_format_lists_findings(
 ) -> None:
     """The json format prints one object per finding, its fix included, and an error exits 1."""
     finding = Finding("some-rule", tmp_path / "client.py", 3, "bad", "error", "do this")
-    monkeypatch.setattr(engine, "verify", lambda _paths, _config=None: [finding])
+    monkeypatch.setattr(engine, "verify_packages", lambda _packages, _config=None: [finding])
     assert cli.main(["--format", "json", str(_package(tmp_path))]) == 1
     assert json.loads(capsys.readouterr().out) == [
         {
@@ -105,7 +105,7 @@ def test_text_format_renders_findings(
     """The text format prints one line per finding, its severity included, and its fix indented on the next."""
     fixed = Finding("some-rule", tmp_path / "client.py", 3, "bad", "error", "do this")
     bare = Finding("other-rule", tmp_path / "client.py", 4, "meh", "warning")
-    monkeypatch.setattr(engine, "verify", lambda _paths, _config=None: [fixed, bare])
+    monkeypatch.setattr(engine, "verify_packages", lambda _packages, _config=None: [fixed, bare])
     cli.main([str(_package(tmp_path))])
     assert capsys.readouterr().out == (
         f"{tmp_path / 'client.py'}:3 error some-rule bad\n"
@@ -117,7 +117,7 @@ def test_text_format_renders_findings(
 def test_warnings_only_exit_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Warnings alone do not fail the run."""
     finding = Finding("some-rule", tmp_path / "client.py", 1, "meh", "warning")
-    monkeypatch.setattr(engine, "verify", lambda _paths, _config=None: [finding])
+    monkeypatch.setattr(engine, "verify_packages", lambda _packages, _config=None: [finding])
     assert cli.main([str(_package(tmp_path))]) == 0
 
 

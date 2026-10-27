@@ -14,14 +14,24 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from headgate_verify.finding import Finding
-from headgate_verify.rules import BAD_EXEMPTION
+from headgate_verify.finding import Rule
+from headgate_verify.syntax import line, statements
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
 
     from ast_grep_py import SgRoot
+
+    from headgate_verify.finding import Finding
+    from headgate_verify.parsing import Modules
+
+BAD_EXEMPTION = Rule(
+    id="bad-exemption",
+    severity="error",
+    fix="Give the allow comment a reason after `--` and name a rule it covers on that line or block, or delete it.",
+)
+"""The finding for a malformed, unknown or unused allow comment; the engine reports it, never a rule file or check."""
 
 _DIRECTIVE = re.compile(r"#\s*headgate-verify:")
 _ALLOW = re.compile(r"#\s*headgate-verify:\s*allow\s+(?P<rule>[\w.-]+)(?:\s+--(?P<reason>.*))?\s*")
@@ -34,10 +44,6 @@ class _Allow:
     rule: str
 
 
-def _bad(path: Path, line: int, message: str) -> Finding:
-    return Finding(BAD_EXEMPTION, path, line, message, "error")
-
-
 def _allows(path: Path, root: SgRoot, known: frozenset[str]) -> tuple[list[_Allow], list[Finding]]:
     allows: list[_Allow] = []
     bad: list[Finding] = []
@@ -45,37 +51,35 @@ def _allows(path: Path, root: SgRoot, known: frozenset[str]) -> tuple[list[_Allo
         text = comment.text()
         if not _DIRECTIVE.match(text):
             continue
-        line = comment.range().start.line + 1
+        at = line(comment)
         allow = _ALLOW.fullmatch(text)
         if allow is None:
-            bad.append(_bad(path, line, f"malformed headgate-verify comment; expected {_FORM}"))
+            bad.append(BAD_EXEMPTION.finding(path, at, f"malformed headgate-verify comment; expected {_FORM}"))
         elif not (allow["reason"] or "").strip():
-            bad.append(_bad(path, line, f"allow comment for {allow['rule']} gives no reason after `--`"))
+            bad.append(BAD_EXEMPTION.finding(path, at, f"allow comment for {allow['rule']} gives no reason after `--`"))
         elif allow["rule"] not in known:
-            bad.append(_bad(path, line, f"allow comment names unknown rule {allow['rule']}"))
+            bad.append(BAD_EXEMPTION.finding(path, at, f"allow comment names unknown rule {allow['rule']}"))
         else:
-            allows.append(_Allow(line, allow["rule"]))
+            allows.append(_Allow(at, allow["rule"]))
     return allows, bad
 
 
 def _scope_lines(root: SgRoot) -> list[tuple[int, int]]:
     """Return ``(def/class line, last line)`` for every function and class, 1-based."""
     scopes = root.root().find_all(any=[{"kind": "function_definition"}, {"kind": "class_definition"}])
-    return [(node.range().start.line + 1, node.range().end.line + 1) for node in scopes]
+    return [(line(node), node.range().end.line + 1) for node in scopes]
 
 
 def _leading_lines(root: SgRoot) -> set[int]:
     """Return the module's first line and every line before its first statement, 1-based."""
     module = root.root()
-    first = module.range().start.line + 1
-    statements = [child for child in module.children() if child.is_named() and child.kind() != "comment"]
-    end = statements[0].range().start.line + 1 if statements else module.range().end.line + 2
+    first = line(module)
+    body = statements(module)
+    end = line(body[0]) if body else module.range().end.line + 2
     return {first} | set(range(first, end))
 
 
-def apply_exemptions(
-    findings: Iterable[Finding], modules: dict[Path, SgRoot], known_rules: frozenset[str]
-) -> list[Finding]:
+def apply_exemptions(findings: Iterable[Finding], modules: Modules, known_rules: frozenset[str]) -> list[Finding]:
     """Return ``findings`` without the ones an allow comment covers, plus a ``bad-exemption`` per bad comment.
 
     ``modules`` are the parsed modules whose comments are read; a finding in any other file is kept as it is.
@@ -89,7 +93,7 @@ def apply_exemptions(
         allows, bad = _allows(path, root, known_rules)
         kept.extend(bad)
         scopes = _scope_lines(root)
-        module_line = root.root().range().start.line + 1
+        module_line = line(root.root())
         leading = _leading_lines(root)
         used: set[_Allow] = set()
         for finding in by_path.get(path, []):
@@ -102,7 +106,7 @@ def apply_exemptions(
             else:
                 kept.append(finding)
         kept.extend(
-            _bad(path, allow.line, f"allow comment for {allow.rule} suppresses nothing")
+            BAD_EXEMPTION.finding(path, allow.line, f"allow comment for {allow.rule} suppresses nothing")
             for allow in allows
             if allow not in used
         )
