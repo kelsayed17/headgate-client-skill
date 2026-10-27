@@ -28,10 +28,9 @@ rule:
         - has: {field: attribute, kind: identifier, regex: '^(environ|environb|getenv|getenvb|putenv|unsetenv)$'}
     - kind: import_statement
       has:
-        field: name
         any:
           - {kind: dotted_name, regex: '^dotenv(\.|$)'}
-          - {kind: aliased_import, has: {field: name, kind: dotted_name, regex: '^dotenv(\.|$)'}}
+          - {kind: aliased_import, has: {kind: dotted_name, regex: '^dotenv(\.|$)'}}
     - kind: import_from_statement
       has: {field: module_name, kind: dotted_name, regex: '^dotenv(\.|$)'}
     - kind: import_from_statement
