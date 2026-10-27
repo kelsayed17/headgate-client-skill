@@ -79,6 +79,14 @@ client's module docstring.
 
 Three requests in all (the docs page, a `406`, the spec), paced 10 seconds apart.
 
+## Worked example: Open-Meteo, two hosts and two specs
+
+Open-Meteo documents each API in its own OpenAPI file in its GitHub repository (`openapi/forecast.yml`,
+`openapi/historical-weather.yml`), one path each, served from different hosts (`api.open-meteo.com`,
+`archive-api.open-meteo.com`). One package holds both clients, so one `docs_paths.json` holds both paths. `source` is
+one string, so it lists the two raw-file URLs, pinned to the commit read and separated by a space, and `reason` says
+so in a sentence. The snapshot has no host field: which class serves which path is the client module's business.
+
 ## Then
 
 Cover every documented read: one method per `GET` in the snapshot, named as the name check derives it. The snapshot is

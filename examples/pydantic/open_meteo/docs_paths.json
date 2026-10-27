@@ -1,0 +1,15 @@
+{
+  "source": "https://raw.githubusercontent.com/open-meteo/open-meteo/930063f12047363861f775c685c16a98b52dbfe4/openapi/forecast.yml https://raw.githubusercontent.com/open-meteo/open-meteo/930063f12047363861f775c685c16a98b52dbfe4/openapi/historical-weather.yml",
+  "retrieved": "2026-10-27",
+  "reason": "Open-Meteo documents each API in its own OpenAPI file, so source lists two URLs, space-separated: forecast.yml (GET /v1/forecast on api.open-meteo.com) and historical-weather.yml (GET /v1/archive on archive-api.open-meteo.com), both at the same commit.",
+  "endpoints": [
+    {
+      "verb": "GET",
+      "path": "/v1/archive"
+    },
+    {
+      "verb": "GET",
+      "path": "/v1/forecast"
+    }
+  ]
+}

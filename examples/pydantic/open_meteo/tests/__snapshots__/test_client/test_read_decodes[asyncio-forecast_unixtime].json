@@ -1,0 +1,41 @@
+{
+  "current": null,
+  "current_units": null,
+  "daily": {
+    "sunrise": [
+      1793080396
+    ],
+    "time": [
+      1793059200
+    ]
+  },
+  "daily_units": {
+    "sunrise": "unixtime",
+    "time": "unixtime"
+  },
+  "elevation": 38.0,
+  "generationtime_ms": 0.0635385513305664,
+  "hourly": {
+    "temperature_2m": [
+      7.9,
+      8.2,
+      8.9
+    ],
+    "time": [
+      1793080800,
+      1793084400,
+      1793088000
+    ]
+  },
+  "hourly_units": {
+    "temperature_2m": "°C",
+    "time": "unixtime"
+  },
+  "latitude": 52.512604,
+  "longitude": 13.419517,
+  "minutely_15": null,
+  "minutely_15_units": null,
+  "timezone": "GMT",
+  "timezone_abbreviation": "GMT",
+  "utc_offset_seconds": 0
+}

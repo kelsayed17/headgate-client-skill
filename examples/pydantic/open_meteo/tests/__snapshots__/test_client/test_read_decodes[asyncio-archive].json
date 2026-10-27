@@ -1,0 +1,52 @@
+{
+  "daily": {
+    "sunrise": [
+      "2026-10-19T06:38",
+      "2026-10-20T06:40",
+      "2026-10-21T06:42",
+      "2026-10-22T06:44"
+    ],
+    "temperature_2m_max": [
+      11.1,
+      9.4,
+      13.9,
+      12.7
+    ],
+    "time": [
+      "2026-10-19",
+      "2026-10-20",
+      "2026-10-21",
+      "2026-10-22"
+    ]
+  },
+  "daily_units": {
+    "sunrise": "iso8601",
+    "temperature_2m_max": "°C",
+    "time": "iso8601"
+  },
+  "elevation": 38.0,
+  "generationtime_ms": 0.08809566497802734,
+  "hourly": {
+    "temperature_2m": [
+      10.7,
+      9.5,
+      8.2,
+      7.5
+    ],
+    "time": [
+      "2026-10-19T00:00",
+      "2026-10-19T01:00",
+      "2026-10-19T02:00",
+      "2026-10-19T03:00"
+    ]
+  },
+  "hourly_units": {
+    "temperature_2m": "°C",
+    "time": "iso8601"
+  },
+  "latitude": 52.54833,
+  "longitude": 13.407822,
+  "timezone": "Europe/Berlin",
+  "timezone_abbreviation": "GMT+1",
+  "utc_offset_seconds": 3600
+}
