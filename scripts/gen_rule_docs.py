@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 OUTPUT = Path(__file__).parent.parent / "skills" / "building-headgate-clients" / "references" / "verifier.md"
 _SPACE = re.compile(r"\s+")
-_NAMING_FIELDS = frozenset({"filler_words", "post_reads"})
+_NAMING_FIELDS = frozenset({"filler_words", "method_prefixes", "post_reads"})
 """The ``Config`` fields ``check_names`` defaults from the package's pyproject (ruling R26); no YAML rule reads them."""
 _NAMING_READER = "`check_names`, in the naming test"
 _ENGINE_FIELDS = frozenset({"rule_dirs"})
@@ -132,7 +132,8 @@ the exit is `2`.
 Two readers take `[tool.headgate-verify]` from two places. The `headgate-verify` command reads the `pyproject.toml`
 nearest the **current working directory** (at or above it), not the one nearest the checked package, so run it from
 the project root. The naming test's `check_names` reads the `pyproject.toml` nearest the **package's `client.py`**,
-for `filler-words` and `post-reads`, unless the test passes `filler=` or `post_reads=` itself (see
+for `filler-words`, `method-prefixes` and `post-reads`, unless the test passes `filler=`, `prefixes=` or
+`post_reads=` itself (see
 [naming.md](naming.md)). Every key is a list of strings; an unknown key, or a value that is not a list of strings, is
 exit `2` for the command and a `ConfigError` for `check_names`.
 

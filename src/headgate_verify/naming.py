@@ -507,6 +507,8 @@ class _Methods:
     """The methods of ``sent`` that read: a GET, or a method named in ``post_reads``."""
     models: Mapping[str, tuple[str, ...]]
     """Each method's return model names: the capitalised names in its return annotation."""
+    shapes: Mapping[str, str]
+    """Each method's call shape: ``walk``, ``stream``, ``fetch`` or ``get``."""
 
 
 def _sort_methods(
@@ -525,7 +527,8 @@ def _sort_methods(
     problems += _unknown_names("post_reads", post_reads, requests)
     reads = {name: endpoint for name, endpoint in sent.items() if endpoint.verb == GET or name in post_reads}
     models = {name: tuple(_MODEL.findall(request.returns)) for name, request in requests.items()}
-    return _Methods(sent, unreadable, frozenset(exempt_writes), reads, models), problems
+    shapes = {name: request.shape for name, request in requests.items()}
+    return _Methods(sent, unreadable, frozenset(exempt_writes), reads, models, shapes), problems
 
 
 @dataclass(frozen=True)
@@ -593,22 +596,36 @@ def _origin(key: _Key, namer: _Namer, documented: Mapping[_Key, Endpoint]) -> st
     return ""
 
 
-def _misnamed(methods: _Methods, universe: _Universe, namer: _Namer) -> list[str]:
-    """Report each method whose name is not the expected one, then each read path that derives no name (R29)."""
+def _accepted(expected: str, shape: str, prefixes: Collection[str]) -> list[str]:
+    """Return the names a method of call ``shape`` may take for ``expected``: it, and its ``shape`` prefix for ``get_``.
+
+    A project's override that does not begin ``get_`` names the method exactly, so no prefix is swapped into it.
+    """
+    if shape == "get" or shape not in prefixes or not expected.startswith("get_"):
+        return [expected]
+    return [expected, f"{shape}_{expected.removeprefix('get_')}"]
+
+
+def _misnamed(methods: _Methods, universe: _Universe, namer: _Namer, prefixes: Collection[str]) -> list[str]:
+    """Report each method whose name is not an accepted one, then each read path that derives no name (R29)."""
     problems: list[str] = []
     nameless = {key: "/" + path for key, path in universe.paths.items() if namer.expected(key) is None}
     named = [(name, methods.reads[name], universe.naming[name]) for name in methods.reads]
     named += [(name, methods.sent[name], doc) for name, doc in universe.writes.items()]
+    shape_count = Counter((_key(naming), methods.shapes[name]) for name, _, naming in named)
     for name, endpoint, naming in sorted(named, key=lambda item: item[0]):
         key = _key(naming)
         expected = namer.expected(key)
+        shape = methods.shapes[name]
+        # a prefix tells two shapes apart, so two methods of one shape on a path both keep the plain name
+        allowed = prefixes if shape_count[key, shape] == 1 else ()
         if expected is None:
             if key not in namer.writes:
                 nameless.setdefault(key, "/" + naming.path.strip("/"))
-        elif name != expected:
+        elif name not in (accepted := _accepted(expected, shape, allowed)):
             problems.append(
                 f"{name} {'reads' if key not in namer.writes else 'sends'} {endpoint.verb} {endpoint.path} and "
-                f"should be named {expected}{_origin(key, namer, universe.documented)} "
+                f"should be named {' or '.join(accepted)}{_origin(key, namer, universe.documented)} "
                 "(or add an override with a reason)"
             )
     problems += [
@@ -630,7 +647,7 @@ def _review(methods: _Methods, universe: _Universe, namer: _Namer, spec: _SpecNa
         verb, where = key[0], paths[key]
         override = f'an override keyed "{verb} {where}" with a reason'
         first = min(names)
-        if len(names) > 1:
+        if len(names) > 1 and len({methods.shapes[name] for name in names}) < len(names):
             listed = " and ".join(sorted(names))
             review.append(
                 f"{listed} all send {verb} {where}; one path names one method, so check each against the docs"
@@ -663,6 +680,7 @@ class _Knobs:
     exempt_writes: Collection[str]
     post_reads: Collection[str] | None
     filler: frozenset[str] | None
+    prefixes: Collection[str] | None
 
 
 @dataclass(frozen=True)
@@ -673,23 +691,24 @@ class _Analysis:
 
 def _analyse(client_module: Path, snapshot: Path, knobs: _Knobs) -> _Analysis:
     docs = load_snapshot(snapshot)
-    filler, post_reads = knobs.filler, knobs.post_reads
-    if filler is None or post_reads is None:
+    filler, post_reads, prefixes = knobs.filler, knobs.post_reads, knobs.prefixes
+    if filler is None or post_reads is None or prefixes is None:
         project = load_config(client_module)
         filler = project.filler_words if filler is None else filler
         post_reads = project.post_reads if post_reads is None else post_reads
+        prefixes = project.method_prefixes if prefixes is None else frozenset(prefixes)
     methods, problems = _sort_methods(read_requests(client_module), knobs.exempt_writes, post_reads)
     universe, compared = _universe(methods, docs, snapshot.name, post_reads)
     problems += compared
     namer, spec = _namer(universe, methods, knobs.overrides, filler)
-    problems += _misnamed(methods, universe, namer)
+    problems += _misnamed(methods, universe, namer, prefixes)
     problems += _collisions(universe.paths, namer)
     known = {*universe.paths, *map(_key, universe.naming.values()), *namer.writes}
     problems += _stale(knobs.overrides, known, namer)
     return _Analysis(problems, _review(methods, universe, namer, spec))
 
 
-def check_names(  # noqa: PLR0913 -- the documented signature: two files and four keyword-only knobs
+def check_names(  # noqa: PLR0913 -- the documented signature: two files and five keyword-only knobs
     client_module: Path,
     snapshot: Path,
     *,
@@ -697,6 +716,7 @@ def check_names(  # noqa: PLR0913 -- the documented signature: two files and fou
     exempt_writes: Collection[str] = (),
     post_reads: Collection[str] | None = None,
     filler: frozenset[str] | None = None,
+    prefixes: Collection[str] | None = None,
 ) -> list[str]:
     """Return one sentence per naming problem of ``client_module`` against the ``snapshot`` file; ``[]`` is clean.
 
@@ -715,14 +735,21 @@ def check_names(  # noqa: PLR0913 -- the documented signature: two files and fou
     key; a non-GET method in neither ``exempt_writes`` nor ``post_reads``; a name in ``exempt_writes`` or
     ``post_reads`` that is no method. Raise ``SnapshotError`` when the snapshot breaks its schema.
 
-    ``filler`` and ``post_reads`` left out (None) are read from ``[tool.headgate-verify]`` in the ``pyproject.toml``
-    nearest ``client_module`` (``filler-words``, ``post-reads``), or are the verifier's defaults when it has no such
+    A method takes the derived name, or the derived name with its call shape's prefix in place of ``get_``: ``walk_``
+    for a body that is ``self.paginate(...)``, ``stream_`` for ``self.stream(...)`` and ``fetch_`` for a verb call with
+    ``expect=as_bytes`` (read through a one-level delegate too). A prefix tells shapes apart, so two methods of one
+    shape on a path both keep the plain name. So ``get_filings`` and ``walk_filings`` may both read
+    one path: a single page beside the whole walk. ``prefixes`` is the set of call-shape prefixes allowed.
+
+    ``filler``, ``post_reads`` and ``prefixes`` left out (None) are read from ``[tool.headgate-verify]`` in the
+    ``pyproject.toml`` nearest ``client_module`` (``filler-words``, ``post-reads``, ``method-prefixes``), or are the
+    verifier's defaults when it has no such
     table (ruling R26); a value passed in wins. Raise ``ConfigError`` when that table is malformed.
     """
-    return _analyse(client_module, snapshot, _Knobs(overrides, exempt_writes, post_reads, filler)).problems
+    return _analyse(client_module, snapshot, _Knobs(overrides, exempt_writes, post_reads, filler, prefixes)).problems
 
 
-def review_names(  # noqa: PLR0913 -- check_names' signature: two files and four keyword-only knobs
+def review_names(  # noqa: PLR0913 -- check_names' signature: two files and five keyword-only knobs
     client_module: Path,
     snapshot: Path,
     *,
@@ -730,6 +757,7 @@ def review_names(  # noqa: PLR0913 -- check_names' signature: two files and four
     exempt_writes: Collection[str] = (),
     post_reads: Collection[str] | None = None,
     filler: frozenset[str] | None = None,
+    prefixes: Collection[str] | None = None,
 ) -> list[str]:
     """Return one sentence per name the rules cannot produce well, for a person or an agent to judge; never a failure.
 
@@ -739,4 +767,4 @@ def review_names(  # noqa: PLR0913 -- check_names' signature: two files and four
     override already names is not listed. The checker stays deterministic: judging whether a path's name reads well,
     and proposing a better one, is the reviewer's, recorded as an override with a reason.
     """
-    return _analyse(client_module, snapshot, _Knobs(overrides, exempt_writes, post_reads, filler)).review
+    return _analyse(client_module, snapshot, _Knobs(overrides, exempt_writes, post_reads, filler, prefixes)).review

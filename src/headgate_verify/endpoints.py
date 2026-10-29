@@ -104,6 +104,8 @@ class Request:
     call: str
     returns: str = ""
     """The public method's return annotation as written, ``""`` when it has none."""
+    shape: str = "get"
+    """The call shape: ``walk`` (``paginate``), ``stream``, ``fetch`` (``expect=as_bytes``) or ``get``."""
 
 
 def _request_name(call: SgNode, receiver: str) -> str | None:
@@ -129,12 +131,20 @@ def _read_request(call: SgNode, name: str, env: Mapping[str, SgNode], module: _M
     return None if verb is None or path is None else Endpoint(verb.upper(), path)
 
 
+def _shape(call: SgNode, name: str) -> str:
+    """Return the call shape of ``<receiver>.<name>(…)``: ``walk``, ``stream``, ``fetch`` or ``get``."""
+    if name in {"paginate", "stream"}:
+        return "walk" if name == "paginate" else "stream"
+    expect = arguments(call)[1].get("expect")
+    return "fetch" if expect is not None and expect.text().rsplit(".", 1)[-1] == "as_bytes" else "get"
+
+
 def _first_request(body: SgNode, receiver: str, env: Mapping[str, SgNode], module: _Module) -> Request | None:
     """Return the first ``<receiver>.<verb>(…)`` call in ``body``, read or not, or None when there is none."""
     for call in body.find_all(kind="call"):
         name = _request_name(call, receiver)
         if name is not None:
-            return Request(_read_request(call, name, env, module), f"{receiver}.{name}")
+            return Request(_read_request(call, name, env, module), f"{receiver}.{name}", shape=_shape(call, name))
     return None
 
 
@@ -166,7 +176,7 @@ def _delegated(body: SgNode, methods: Mapping[str, SgNode], module: _Module) -> 
         request = _first_request(leg_body, receiver, env, module)
         callee = call.field("function")
         if request is not None and callee is not None:
-            return Request(request.endpoint, f"{request.call} (through {callee.text()})")
+            return Request(request.endpoint, f"{request.call} (through {callee.text()})", shape=request.shape)
     return None
 
 

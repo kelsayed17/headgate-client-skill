@@ -103,3 +103,17 @@ def test_unreadable_pyproject_is_config_error(tmp_path: Path, monkeypatch: pytes
     monkeypatch.setattr(Path, "read_text", refuse)
     with pytest.raises(ConfigError, match="cannot be read \\(Permission denied\\)"):
         load_config(tmp_path)
+
+
+def test_method_prefixes_default_and_override(tmp_path: Path) -> None:
+    """``method-prefixes`` lists the call-shape prefixes a method may take in place of ``get``."""
+    assert Config().method_prefixes == frozenset({"walk", "stream", "fetch"})
+    _write(tmp_path, '[tool.headgate-verify]\nmethod-prefixes = ["walk"]\n')
+    assert load_config(tmp_path).method_prefixes == frozenset({"walk"})
+
+
+def test_method_prefixes_rejects_an_unknown_shape(tmp_path: Path) -> None:
+    """A prefix that is no call shape would never apply, so it is a config error."""
+    _write(tmp_path, '[tool.headgate-verify]\nmethod-prefixes = ["iter"]\n')
+    with pytest.raises(ConfigError, match="method-prefixes"):
+        load_config(tmp_path)

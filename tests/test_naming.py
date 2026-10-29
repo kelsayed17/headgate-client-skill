@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from headgate_verify.endpoints import client_endpoints
-from headgate_verify.naming import DEFAULT_FILLER, check_names, endpoint_name
+from headgate_verify.naming import DEFAULT_FILLER, check_names, endpoint_name, review_names
 from headgate_verify.snapshot import DocsSnapshot, Endpoint, SnapshotError, load_snapshot
 
 if TYPE_CHECKING:
@@ -525,3 +525,119 @@ def test_no_project_lists_keep_the_defaults(tmp_path: Path) -> None:
     client = _client(tmp_path, _get("get_quote_summary", 't"v10/finance/quoteSummary/{symbol}"'))
     (problem,) = check_names(client, _snapshot(tmp_path, [("GET", "/v10/finance/quoteSummary/{symbol}")]))
     assert "should be named get_finance_quote_summary" in problem
+
+
+# call-shape prefixes
+
+
+def _walk(name: str, route: str) -> str:
+    return (
+        f"    def {name}(self) -> Paginated[X]:\n        return self.paginate({route}, expect=X, pages=P, limit=L)\n\n"
+    )
+
+
+def _stream(name: str, route: str) -> str:
+    return (
+        f"    async def {name}(self) -> AsyncIterator[bytes]:\n"
+        f"        async with self.stream({route}) as s:\n            async for c in s.aiter_bytes():\n"
+        "                yield c\n\n"
+    )
+
+
+def _fetch(name: str, route: str) -> str:
+    return f"    async def {name}(self) -> bytes:\n        return await self.get({route}, expect=as_bytes)\n\n"
+
+
+def test_each_call_shape_takes_its_own_prefix(tmp_path: Path) -> None:
+    """A paged read may be ``walk_``, a stream ``stream_`` and a raw-body read ``fetch_``; ``get_`` stays valid."""
+    body = (
+        _walk("walk_filings", '"v1/filings"')
+        + _stream("stream_exports", '"v1/exports"')
+        + _fetch("fetch_reports", '"v1/reports"')
+        + _walk("get_clients", '"v1/clients"')
+    )
+    snapshot = _snapshot(
+        tmp_path, [("GET", "/v1/filings"), ("GET", "/v1/exports"), ("GET", "/v1/reports"), ("GET", "/v1/clients")]
+    )
+    assert check_names(_client(tmp_path, body), snapshot) == []
+
+
+def test_a_get_and_a_walk_may_share_one_path(tmp_path: Path) -> None:
+    """A single-page ``get_x`` beside the ``walk_x`` of the same endpoint is a pair, not a duplicate."""
+    body = _get("get_filings", '"v1/filings"') + _walk("walk_filings", '"v1/filings"')
+    client = _client(tmp_path, body)
+    snapshot = _snapshot(tmp_path, [("GET", "/v1/filings")])
+    assert check_names(client, snapshot) == []
+    assert review_names(client, snapshot) == []
+
+
+def test_a_walk_named_get_beside_a_single_get_is_reported(tmp_path: Path) -> None:
+    """Two methods on one path that both claim ``get_`` are not a pair: the walk must be ``walk_``."""
+    body = _get("get_filings", '"v1/filings"') + _walk("get_filings_page", '"v1/filings"')
+    (problem,) = check_names(_client(tmp_path, body), _snapshot(tmp_path, [("GET", "/v1/filings")]))
+    assert "get_filings_page" in problem
+    assert "should be named get_filings or walk_filings" in problem
+
+
+@pytest.mark.parametrize(
+    "method",
+    [
+        _get("fetch_filings", '"v1/filings"'),
+        _get("walk_filings", '"v1/filings"'),
+        _get("stream_filings", '"v1/filings"'),
+        _walk("fetch_filings", '"v1/filings"'),
+        _stream("walk_filings", '"v1/filings"'),
+        _fetch("stream_filings", '"v1/filings"'),
+    ],
+)
+def test_a_prefix_that_is_not_its_call_shapes_is_reported(tmp_path: Path, method: str) -> None:
+    """A prefix other than ``get_`` and the one its body's call shape takes is a misnamed method."""
+    (problem,) = check_names(_client(tmp_path, method), _snapshot(tmp_path, [("GET", "/v1/filings")]))
+    assert "should be named" in problem
+
+
+def test_a_delegating_walk_takes_the_walk_prefix(tmp_path: Path) -> None:
+    """The call shape is read through a one-level delegate too."""
+    body = (
+        '    def walk_filings(self) -> Paginated[X]:\n        return self._pages("v1/filings")\n\n'
+        "    def _pages(self, path: str) -> Paginated[X]:\n        return self.paginate(path, expect=X, pages=P)\n"
+    )
+    assert check_names(_client(tmp_path, body), _snapshot(tmp_path, [("GET", "/v1/filings")])) == []
+
+
+def test_an_override_name_is_kept_whole(tmp_path: Path) -> None:
+    """An override that does not begin ``get_`` names the method exactly; no prefix is swapped into it."""
+    body = _walk("walk_all_filings", '"v1/filings"')
+    snapshot = _snapshot(tmp_path, [("GET", "/v1/filings")])
+    client = _client(tmp_path, body)
+    assert check_names(client, snapshot, overrides={"get_filings": "list_filings"})[0].startswith("walk_all_filings")
+    assert check_names(client, snapshot, overrides={"get_filings": "get_all_filings"}) == []
+
+
+def test_method_prefixes_in_the_project_limit_the_shapes(tmp_path: Path) -> None:
+    """``method-prefixes`` lists the call-shape prefixes a project allows; an empty list keeps every read ``get_``."""
+    _pyproject(tmp_path, "method-prefixes = []")
+    client = _client(tmp_path, _walk("walk_filings", '"v1/filings"'))
+    snapshot = _snapshot(tmp_path, [("GET", "/v1/filings")])
+    (problem,) = check_names(client, snapshot)
+    assert "should be named get_filings" in problem
+    assert check_names(client, snapshot, prefixes=("walk",)) == []
+
+
+def test_two_walks_on_one_path_keep_the_plain_name(tmp_path: Path) -> None:
+    """Two methods of one shape are not a pair: the prefix may not tell them apart."""
+    body = _walk("get_filings", '"v1/filings"') + _walk("walk_filings", '"v1/filings"')
+    (problem,) = check_names(_client(tmp_path, body), _snapshot(tmp_path, [("GET", "/v1/filings")]))
+    assert problem.startswith("walk_filings reads GET v1/filings and should be named get_filings")
+
+
+def test_a_fetch_is_read_through_a_delegate_and_a_module_attribute(tmp_path: Path) -> None:
+    """``expect=http.as_bytes`` and a delegate's ``expect=as_bytes`` both make a ``fetch``."""
+    body = (
+        '    async def fetch_reports(self) -> bytes:\n        return await self._raw("v1/reports")\n\n'
+        "    async def _raw(self, path: str) -> bytes:\n        return await self.get(path, expect=as_bytes)\n\n"
+        "    async def fetch_exports(self) -> bytes:\n"
+        '        return await self.get("v1/exports", expect=http.as_bytes)\n'
+    )
+    snapshot = _snapshot(tmp_path, [("GET", "/v1/reports"), ("GET", "/v1/exports")])
+    assert check_names(_client(tmp_path, body), snapshot) == []

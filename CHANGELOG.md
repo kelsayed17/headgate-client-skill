@@ -7,6 +7,11 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- `check_names` takes a method's call-shape prefix from its body: `walk_` for `self.paginate(...)`, `stream_` for
+  `self.stream(...)` and `fetch_` for a verb call with `expect=as_bytes`, through a one-level delegate too. `get_`
+  stays valid for every shape, and a `get_` and a `walk_` may read one path (a single page beside the whole walk), so a
+  client keeps both without an override. `method-prefixes` in `[tool.headgate-verify]` lists the prefixes allowed
+  (`[]` keeps every read `get_`), and `check_names` and `review_names` take `prefixes=`.
 - Two `headgate-verify` rules: `client-wire-structs-are-frozen-without-gc` (a msgspec wire struct in `models.py`
   spells `frozen=True, gc=False`, and a subclass overrides neither) and `client-query-params-are-a-typeddict` (a query
   reaches the wire only as the enclosing function's own `**params: Unpack[...]`, untouched: not rebound or mutated,
