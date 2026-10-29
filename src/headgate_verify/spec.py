@@ -56,13 +56,27 @@ class SpecError(ValueError):
     """The source holds no OpenAPI or Swagger document, or cannot be read; the message says which."""
 
 
+def _embedded(raw: str) -> list[object]:
+    """Return each ``JSON.parse('…')`` literal in ``raw`` that reads as JSON; a literal that does not is skipped."""
+    found: list[object] = []
+    for body in _EMBEDDED.findall(raw):
+        try:
+            found.append(json.loads(ast.literal_eval(f"'{body}'")))
+        except SyntaxError, ValueError:
+            continue
+    return found
+
+
 def parse_documents(raw: str) -> list[Document]:
-    """Return the OpenAPI or Swagger documents in ``raw``: JSON, YAML, or ``JSON.parse('…')`` literals in a page."""
+    """Return the OpenAPI or Swagger documents in ``raw``: JSON, YAML, or ``JSON.parse('…')`` literals in a page.
+
+    A bundle's literal that is not JSON, or uses a JavaScript escape Python cannot read, is skipped, so one unrelated
+    literal never hides the spec beside it.
+    """
     if raw.lstrip().startswith("{"):
         documents: list[object] = [json.loads(raw)]
     else:
-        embedded = [json.loads(ast.literal_eval(f"'{body}'")) for body in _EMBEDDED.findall(raw)]
-        documents = embedded or [yaml.safe_load(raw)]
+        documents = _embedded(raw) or [yaml.safe_load(raw)]
     found = [doc for doc in documents if isinstance(doc, dict) and isinstance(doc.get("paths"), dict)]
     if not found:
         msg = "the source holds no OpenAPI or Swagger document (no object with a paths table)"
@@ -70,35 +84,42 @@ def parse_documents(raw: str) -> list[Document]:
     return found
 
 
-def _resolve(schema: object, document: Document) -> Document:
-    """Follow ``$ref`` links within ``document`` until a schema object is reached; ``{}`` when none is."""
+def _resolve(node: object, document: Document) -> Document:
+    """Follow ``$ref`` links within ``document`` until an object without one is reached; ``{}`` when none is.
+
+    It serves schemas, responses (``#/components/responses/…``, Swagger 2's ``#/responses/…``), request bodies
+    (``#/components/requestBodies/…``) and parameters alike.
+    """
     for _ in range(_MAX_REFS):
-        if not isinstance(schema, dict) or "$ref" not in schema:
+        if not isinstance(node, dict) or "$ref" not in node:
             break
-        node: object = document
-        for part in str(schema["$ref"]).lstrip("#/").split("/"):
-            node = node.get(part, {}) if isinstance(node, dict) else {}
-        schema = node
-    return schema if isinstance(schema, dict) else {}
+        target: object = document
+        for part in str(node["$ref"]).lstrip("#/").split("/"):
+            target = target.get(part, {}) if isinstance(target, dict) else {}
+        node = target
+    return node if isinstance(node, dict) else {}
 
 
-def _success(operation: Document) -> Document:
-    """Return the operation's first success response (``200``, else ``201``), or ``{}``."""
+def _success(operation: Document, document: Document) -> Document:
+    """Return the operation's first success response (``200``, else ``201``), its ``$ref`` followed, or ``{}``."""
     responses = operation.get("responses")
     if not isinstance(responses, dict):
         return {}
     for code in _SUCCESS:
         found = responses.get(code, responses.get(int(code)))
         if isinstance(found, dict):
-            return found
+            return _resolve(found, document)
     return {}
 
 
-def _success_schema(operation: Document) -> object:
-    response = _success(operation)
-    if "schema" in response:  # Swagger 2
-        return response["schema"]
-    content = response.get("content")
+def _body_schema(container: Document) -> object:
+    """Return the body schema of a response or request body: Swagger 2's ``schema``, else its JSON (or first) media's.
+
+    Only the body is read, never ``headers`` or ``links`` beside it.
+    """
+    if "schema" in container:  # Swagger 2
+        return container["schema"]
+    content = container.get("content")
     if not isinstance(content, dict) or not content:
         return None
     media = content.get("application/json", next(iter(content.values())))
@@ -107,7 +128,7 @@ def _success_schema(operation: Document) -> object:
 
 def response_shape(operation: Document, document: Document) -> str:
     """Return ``array`` when a success answers a JSON array, ``object`` for an object, else ``""``."""
-    schema = _resolve(_success_schema(operation), document)
+    schema = _resolve(_body_schema(_success(operation, document)), document)
     if schema.get("type") == "array" or "items" in schema:
         return "array"
     if schema.get("type") == "object" or "properties" in schema:
@@ -121,17 +142,22 @@ def _first_ref(node: object) -> str:
     return "" if found is None else str(found.group(1))
 
 
-def request_schema(operation: Document) -> str:
-    """Return the request body's schema name: an OpenAPI 3 ``requestBody`` or a Swagger 2 ``in: body`` parameter."""
+def response_schema(operation: Document, document: Document) -> str:
+    """Return the schema name a success's body names (an array's item schema, when that is all it names), or ``""``."""
+    return _first_ref(_body_schema(_success(operation, document)))
+
+
+def request_schema(operation: Document, document: Document) -> str:
+    """Return the request body's schema name: an OpenAPI 3 ``requestBody`` or a Swagger 2 ``in: body`` parameter.
+
+    A ``$ref`` to a shared request body or parameter is followed first.
+    """
     body = operation.get("requestBody")
-    if body is None:
-        parameters = operation.get("parameters")
-        body = (
-            [p for p in parameters if isinstance(p, dict) and p.get("in") == "body"]
-            if isinstance(parameters, list)
-            else []
-        )
-    return _first_ref(body)
+    if body is not None:
+        return _first_ref(_body_schema(_resolve(body, document)))
+    parameters = operation.get("parameters")
+    resolved = [_resolve(p, document) for p in parameters] if isinstance(parameters, list) else []
+    return next((_first_ref(p.get("schema")) for p in resolved if p.get("in") == "body"), "")
 
 
 def _text(value: object) -> str:
@@ -151,8 +177,8 @@ def endpoints(documents: Sequence[Document]) -> tuple[Endpoint, ...]:
                         path,
                         operation_id=_text(operation.get("operationId")),
                         summary=_text(operation.get("summary")),
-                        request_schema=request_schema(operation),
-                        response_schema=_first_ref(_success(operation)),
+                        request_schema=request_schema(operation, document),
+                        response_schema=response_schema(operation, document),
                         response_shape=response_shape(operation, document),
                     )
     return tuple(found[key] for key in sorted(found))
@@ -195,10 +221,18 @@ def read_source(source: str) -> tuple[str, date]:
         if not source.startswith("https://"):
             return Path(source).read_text(encoding="utf-8"), datetime.now(UTC).date()
         text, stamp = _fetch(source)
-    except (OSError, UnicodeDecodeError, LookupError) as error:
+    except (OSError, UnicodeDecodeError, LookupError, http.client.HTTPException) as error:
         msg = f"{source} cannot be read: {error}"
         raise SpecError(msg) from error
-    return text, datetime.now(UTC).date() if stamp is None else parsedate_to_datetime(stamp).astimezone(UTC).date()
+    return text, _day(stamp)
+
+
+def _day(stamp: str | None) -> date:
+    """Return the UTC day of a ``Date`` header; today when there is none or it cannot be read."""
+    try:
+        return parsedate_to_datetime(stamp).astimezone(UTC).date() if stamp is not None else datetime.now(UTC).date()
+    except TypeError, ValueError:
+        return datetime.now(UTC).date()
 
 
 def snapshot_of(source: str, reason: str | None = None) -> DocsSnapshot:
@@ -245,7 +279,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for target in targets:
         try:
             snapshot = refresh(target) if source is None else write(target, source)
-        except (SpecError, SnapshotError, json.JSONDecodeError, yaml.YAMLError) as error:
+        except (SpecError, SnapshotError, OSError, json.JSONDecodeError, yaml.YAMLError) as error:
             sys.stderr.write(f"headgate-snapshot: {target}: {error}\n")
             failed = True
         else:

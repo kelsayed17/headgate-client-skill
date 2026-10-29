@@ -101,7 +101,7 @@ def test_swagger_two_body_parameter_and_response_schema() -> None:
         "responses": {"201": {"schema": {"$ref": "#/definitions/Pet"}}},
     }
     document = {"definitions": {"Pet": {"type": "object"}}}
-    assert spec.request_schema(operation) == "Pet"
+    assert spec.request_schema(operation, document) == "Pet"
     assert spec.response_shape(operation, document) == "object"
 
 
@@ -119,7 +119,7 @@ def test_swagger_two_body_parameter_and_response_schema() -> None:
 def test_details_are_empty_when_the_spec_is_silent(operation: dict[str, object]) -> None:
     """An operation with no readable success schema or body gives ``""`` for each."""
     assert spec.response_shape(operation, {"nowhere": "text"}) == ""
-    assert spec.request_schema(operation) == ""
+    assert spec.request_schema(operation, {}) == ""
 
 
 def test_a_ref_loop_stops() -> None:
@@ -161,7 +161,7 @@ def test_load_rejects_bad_details(tmp_path: Path, endpoint: dict[str, object], f
 
 
 class _Response:
-    def __init__(self, status: int, body: bytes, headers: dict[str, str]) -> None:
+    def __init__(self, status: int, body: bytes | Exception, headers: dict[str, str]) -> None:
         self.status = status
         self.reason = "Reason"
         self._body = body
@@ -169,6 +169,8 @@ class _Response:
         self.msg = self
 
     def read(self) -> bytes:
+        if isinstance(self._body, Exception):
+            raise self._body
         return self._body
 
     def getheader(self, name: str) -> str | None:
@@ -317,3 +319,77 @@ def test_main_reports_each_failure(tmp_path: Path, capsys: pytest.CaptureFixture
 def test_main_usage(argv: list[str], code: int) -> None:
     """``--help`` exits 0 and a usage error exits 2, never raising ``SystemExit``."""
     assert spec.main(argv) == code
+
+
+# review findings: shared responses and bodies, headers, bundles, failures
+
+
+def test_a_shared_response_is_followed() -> None:
+    """A success that is a ``$ref`` to ``components/responses`` (or Swagger 2's ``responses``) is read through it."""
+    document = {
+        "components": {
+            "responses": {
+                "Orders": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Orders"}}}}
+            },
+            "schemas": {"Orders": {"type": "array", "items": {"type": "object"}}},
+        },
+        "responses": {"Pet": {"schema": {"$ref": "#/definitions/Pet"}}},
+        "definitions": {"Pet": {"type": "object"}},
+    }
+    openapi = {"responses": {"200": {"$ref": "#/components/responses/Orders"}}}
+    swagger = {"responses": {"200": {"$ref": "#/responses/Pet"}}}
+    assert (spec.response_shape(openapi, document), spec.response_schema(openapi, document)) == ("array", "Orders")
+    assert (spec.response_shape(swagger, document), spec.response_schema(swagger, document)) == ("object", "Pet")
+
+
+def test_a_shared_request_body_or_parameter_is_followed() -> None:
+    """A ``requestBody`` or a body parameter that is a ``$ref`` names the schema it points at."""
+    document = {
+        "components": {
+            "requestBodies": {
+                "NewOrder": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/NewOrder"}}}}
+            }
+        },
+        "parameters": {"Body": {"in": "body", "schema": {"$ref": "#/definitions/Pet"}}},
+    }
+    assert spec.request_schema({"requestBody": {"$ref": "#/components/requestBodies/NewOrder"}}, document) == "NewOrder"
+    assert spec.request_schema({"parameters": [{"$ref": "#/parameters/Body"}]}, document) == "Pet"
+
+
+def test_the_response_schema_is_the_body_s_never_a_header_s() -> None:
+    """A ``$ref`` in the response's ``headers`` is not its schema; the body's is."""
+    response = {
+        "headers": {"X-RateLimit": {"schema": {"$ref": "#/components/schemas/RateLimit"}}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Order"}}},
+    }
+    assert spec.response_schema({"responses": {"201": response}}, {}) == "Order"
+
+
+def test_an_unreadable_literal_beside_the_spec_is_skipped() -> None:
+    """A literal that is not JSON, or uses a JavaScript-only escape, is skipped; the spec beside it is read."""
+    document = json.dumps({"openapi": "3", "paths": {"/a": {"get": {"operationId": "getA"}}}})
+    bundle = f"JSON.parse('not json');JSON.parse('\\u{{1F600}}');JSON.parse('{document}')"
+    assert spec.endpoints(spec.parse_documents(bundle)) == (Endpoint("GET", "/a", "getA"),)
+
+
+def test_a_broken_connection_is_a_spec_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``http.client``'s own errors (a body cut short) are a ``SpecError``, not a traceback."""
+    cut = spec.http.client.IncompleteRead(b"")
+    _serve(monkeypatch, {("x.example", "/s"): _Response(200, cut, {})})
+    with pytest.raises(spec.SpecError, match="cannot be read"):
+        spec.read_source("https://x.example/s")
+
+
+def test_a_malformed_date_is_today(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A ``Date`` header that does not parse dates the snapshot today, in UTC."""
+    _serve(monkeypatch, {("x.example", "/"): _Response(200, json.dumps(_OPENAPI).encode(), {"Date": "yesterday"})})
+    assert spec.read_source("https://x.example")[1] == datetime.now(UTC).date()
+
+
+def test_main_reports_a_target_it_cannot_write(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A target in a missing directory is a message and exit 2, not a traceback."""
+    source = tmp_path / "openapi.json"
+    source.write_text(json.dumps(_OPENAPI), encoding="utf-8")
+    target = tmp_path / "nodir" / "docs_paths.json"
+    assert spec.main(["write", str(target), str(source)]) == USAGE_ERROR
+    assert capsys.readouterr().err.startswith(f"headgate-snapshot: {target}: ")

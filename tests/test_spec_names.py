@@ -498,3 +498,32 @@ def test_headgate_names_reports_a_broken_snapshot(tmp_path: Path, capsys: pytest
 def test_headgate_names_usage(argv: list[str], code: int) -> None:
     """``--help`` exits 0 and a missing argument exits 2, never raising ``SystemExit``."""
     assert review.main(argv) == code
+
+
+def test_a_write_with_no_operation_id_is_listed(tmp_path: Path) -> None:
+    """A write the spec gives no ``operationId`` is unchecked, and the review lists it."""
+    endpoints = [_named("POST", "/v1/orders/batch", "")]
+    client = _client(tmp_path, [("submit", 'post "v1/orders/batch"', "")])
+    snapshot = _snapshot(tmp_path, endpoints)
+    assert check_names(client, snapshot, exempt_writes=["submit"]) == []
+    assert review_names(client, snapshot, exempt_writes=["submit"]) == [
+        "submit sends POST /v1/orders/batch, which no rule names: the spec gives it no operationId; check its name"
+    ]
+
+
+def test_a_noun_with_a_digit_keeps_its_number() -> None:
+    """A last noun that is not all letters (``level2``) is left as it is."""
+    assert spec_name(_named("GET", "/v1/level2", "getLevel2", response_shape="array")).name == "get_level2"
+
+
+def test_a_path_ending_in_a_hole_names_no_action() -> None:
+    """An id stating every word, on a path that ends in a hole, has no action segment to take a verb from."""
+    assert "name no verb" in spec_name(_named("POST", "/v1/orders/{id}", "order"), write=True).rejected
+
+
+def test_knobs_passed_in_skip_the_project_table(tmp_path: Path) -> None:
+    """With ``filler`` and ``post_reads`` both passed, no ``pyproject.toml`` is read."""
+    (tmp_path / "pyproject.toml").write_text("[tool.headgate-verify]\nnot-a-key = []\n", encoding="utf-8")
+    client = _client(tmp_path, [("get_orders", 'get "v1/orders"', "")])
+    snapshot = _snapshot(tmp_path, [_named("GET", "/v1/orders", "listOrders")])
+    assert check_names(client, snapshot, filler=frozenset(), post_reads=()) == []

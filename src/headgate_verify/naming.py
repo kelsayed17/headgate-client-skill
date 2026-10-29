@@ -453,7 +453,7 @@ def _spec_names(entries: Mapping[_Key, _Entry], path_names: Mapping[_Key, str | 
     notes = {
         key: result.rejected
         for key, result in given.items()
-        if result.rejected and entries[key].documented.operation_id
+        if result.rejected and (entries[key].documented.operation_id or entries[key].write)
     }
     for key in clashing():
         notes[key] = f"its spec name {chosen.pop(key)} is another endpoint's too"
