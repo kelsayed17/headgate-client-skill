@@ -7,8 +7,8 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
-- Two `headgate-verify` rules: `client-wire-structs-are-frozen-without-gc` (a msgspec wire struct spells
-  `frozen=True, gc=False`, and a subclass overrides neither) and `client-query-params-are-a-typeddict` (a query
+- Two `headgate-verify` rules: `client-wire-structs-are-frozen-without-gc` (a msgspec wire struct in `models.py`
+  spells `frozen=True, gc=False`, and a subclass overrides neither) and `client-query-params-are-a-typeddict` (a query
   reaches the wire only as the enclosing function's own `**params: Unpack[...]`, untouched: not rebound or mutated,
   not merged, not handed to a collector leg as a keyword, not written into the path). The lda example's structs
   declare `gc=False`.

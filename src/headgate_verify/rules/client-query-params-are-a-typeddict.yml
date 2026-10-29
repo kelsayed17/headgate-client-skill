@@ -20,10 +20,12 @@
 #      function. A named `params`, a dict literal, a `dict(...)`, a walrus, a merge `{**_DEFAULTS, **params}` (a fixed
 #      query belongs to the auth flow or the caller), and a lambda's or nested function's own `params` all fail;
 #   2. in a collector function (nearest), the collector REBOUND or MUTATED: an assignment or augmented assignment whose
-#      target holds the name `params` (`params = ...`, `params[...] = ...`, `params, x = ...`; not `self.params`), a
-#      walrus, a `for`/`with`/`except` target, `del params[...]`, or a method called on it other than the readers `get`,
-#      `keys`, `values`, `items`; and a nested function's `nonlocal params` (a `global params` beside a `**params`
-#      parameter is a SyntaxError). Reading a key (`params["date"]`) is allowed;
+#      target IS the collector (`params = ...`, `params[...] = ...`, `params.x = ...`, or an element of an unpacking
+#      target, `params, x = ...`; not `self.params`), a walrus, a `for`/`with`/`except` target, `del params[...]`, or a
+#      method called on it other than the readers `get`, `keys`, `values`, `items`; and a nested function's
+#      `nonlocal params` (a `global params` beside a `**params` parameter is a SyntaxError). Reading a key is allowed,
+#      in a target too: `self._seen[params["date"]] = True`, `self._hits[params["date"]] += 1` and
+#      `del self._cache[params["date"]]` write to another object;
 #   3. a call that splats `**params` beside a keyword argument or a second splat (the keyword lands in the callee's
 #      collector), and a `self._<leg>(...)` / `_<fn>(...)` call that splats anything but `**params`;
 #   4. a keyword argument handed to a LEG WITH A COLLECTOR: `self._<leg>(..., k=v)` where the class defines `_<leg>`
@@ -45,8 +47,10 @@
 # other than `self`, is not looked up for clause 4; and a `params` local in a function WITHOUT a collector, splatted
 # alone into an OAuth client's collector (clause 3's allowed case), is that auth flow's own business.
 #
-# CHANGED from the source rule: the scope is every module of the package; the source's measurements and its one
-# provider's shared leg are dropped from this header, and a finding is exempted by an allow comment with a reason.
+# CHANGED from the source rule: a write target must BE the collector (the source reported any target holding the
+# name, so `self._seen[params["k"]] = True` read as a mutation); the scope is every module of the package; the
+# source's measurements and its one provider's shared leg are dropped from this header, and a finding is exempted by
+# an allow comment with a reason.
 id: client-query-params-are-a-typeddict
 language: python
 severity: error
@@ -77,15 +81,26 @@ utils:
     kind: identifier
     regex: '^params$'
     not: {inside: {kind: attribute, field: attribute}}
+  # A target that IS the collector: the name, `params[...]`, `params.<x>`, or an element of an unpacking target
+  # (`params, x = ...`, `[*params] = ...`, `with f() as (a, params)`). A target that only READS it
+  # (`self._seen[params["k"]]`) is not one.
+  params-target:
+    any:
+      - matches: params-name
+      - {kind: subscript, has: {field: value, matches: params-name}}
+      - {kind: attribute, has: {field: object, matches: params-name}}
+      - {kind: list_splat_pattern, has: {matches: params-name}}
+      - any: [{kind: pattern_list}, {kind: tuple_pattern}, {kind: list_pattern}, {kind: tuple}, {kind: list}]
+        has: {matches: params-target}
   # A statement or expression that rebinds or mutates `params`.
   writes-params:
     any:
-      - {kind: assignment, has: {field: left, any: [{matches: params-name}, {has: {stopBy: end, matches: params-name}}]}}
-      - {kind: augmented_assignment, has: {field: left, any: [{matches: params-name}, {has: {stopBy: end, matches: params-name}}]}}
+      - {kind: assignment, has: {field: left, matches: params-target}}
+      - {kind: augmented_assignment, has: {field: left, matches: params-target}}
       - {kind: named_expression, has: {field: name, matches: params-name}}
-      - {kind: for_statement, has: {field: left, any: [{matches: params-name}, {has: {stopBy: end, matches: params-name}}]}}
-      - {kind: as_pattern, has: {field: alias, has: {stopBy: end, matches: params-name}}}
-      - {kind: delete_statement, has: {stopBy: end, matches: params-name}}
+      - {kind: for_statement, has: {field: left, matches: params-target}}
+      - {kind: as_pattern, has: {field: alias, has: {matches: params-target}}}
+      - {kind: delete_statement, has: {any: [{matches: params-target}, {kind: expression_list, has: {matches: params-target}}]}}
       - kind: call
         has:
           field: function

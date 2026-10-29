@@ -188,8 +188,9 @@ def get_filings(self, **params: Unpack[FilingsParams]) -> Paginated[Page[Filing]
 - **msgspec:** `class Filing(msgspec.Struct, frozen=True, gc=False)`, fields only: no methods, properties or computed
   members (`client-wire-structs-are-data`). `frozen=True, gc=False` come first in the keywords: a decoded body is a
   tree, so no instance sits in a reference cycle and the garbage collector need not track it. A subclass of a struct
-  inherits both and never overrides either (`client-wire-structs-are-frozen-without-gc`). Decoded with
-  `headgate.msgspec.decoder`.
+  inherits both and never overrides either (`client-wire-structs-are-frozen-without-gc`, which reads `models.py`). A
+  struct built in code that can hold any object (a callback bound to the client) is no wire model: keep it out of
+  `models.py` and leave it tracked, or the cycle through it leaks the client. Decoded with `headgate.msgspec.decoder`.
 - **pydantic:** a `BaseModel` with `model_config = ConfigDict(frozen=True)`, fields only: no methods, properties or
   validators (`client-pydantic-models-are-data`). Decoded with `headgate.pydantic.decoder` (strict by default).
 - **Field names are the API's own**; msgspec's `rename=` or a pydantic alias where Python cannot spell one. Types say
