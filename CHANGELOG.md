@@ -7,6 +7,14 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- `headgate-snapshot write <docs_paths.json> <url or file>` writes the docs snapshot from the vendor's OpenAPI or
+  Swagger document (JSON, YAML, or `JSON.parse('…')` literals in a docs page bundle), and `refresh` reads each
+  snapshot's `source` again. It sends a `User-Agent` naming the tool and an `Accept` preferring the OpenAPI media
+  types, and dates the snapshot by the response's `Date` header.
+- A snapshot endpoint carries the spec's operation details beside `verb` and `path`: `operation_id`, `summary`,
+  `request_schema`, `response_schema` and `response_shape` (`array`, `object` or `""`). They are optional, so a
+  snapshot scraped from docs pages still loads.
+
 - Repository setup to match headgate's: a security policy, contributing guide and code of conduct; bug and feature
   issue forms and a pull-request template; weekly grouped Dependabot updates for uv and GitHub Actions; CI runs the
   tests with branch coverage (failing below the measured floor) and again at the lowest declared dependencies.

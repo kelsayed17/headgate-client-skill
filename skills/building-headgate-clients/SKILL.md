@@ -24,6 +24,7 @@ Do the steps in order. Each produces something the next one needs.
 
 1. **Snapshot the docs.** Find the API's machine-readable surface (`llms.txt`, an OpenAPI document, a spec embedded in
    the docs site, or the docs pages) and save every documented verb and path as `docs_paths.json` beside the client.
+   From an official OpenAPI or Swagger document, `headgate-snapshot write docs_paths.json <spec URL>` writes it.
    Read the API's terms before the first request and record what you measure. See
    [references/docs-snapshot.md](references/docs-snapshot.md).
 2. **Pick the flavour and copy the matching example.** msgspec (`headgate[msgspec]`, `msgspec.Struct` models) or
