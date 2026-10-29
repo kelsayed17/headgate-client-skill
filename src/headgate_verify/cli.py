@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from headgate_verify import engine
-from headgate_verify.config import ConfigError, load_config
+from headgate_verify.config import load_config
 from headgate_verify.package import NoPackageError, find_packages
 
 if TYPE_CHECKING:
@@ -43,7 +43,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _USAGE_ERROR
     try:
         config = load_config(Path.cwd())
-    except ConfigError as error:
+        # Load the project's rules now, so one that will not load or takes another rule's id is a usage error.
+        engine.yaml_rules(config)
+    except ValueError as error:  # a ConfigError, or a project rule from `rule-dirs`
         sys.stderr.write(f"headgate-verify: {error}\n")
         return _USAGE_ERROR
     try:
