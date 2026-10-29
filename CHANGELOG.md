@@ -7,6 +7,9 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Internet Explorer 11's engine token (`; Trident/7.0`) is a browser token: `client-browser-user-agent-only-where-allowed`
+  reports an IE11 spoof as a browser spoof (so a package allowed one passes), and `client-no-identity-user-agent` no
+  longer reads it as a self-identifying product token.
 - `headgate-snapshot write <docs_paths.json> <url or file>` writes the docs snapshot from the vendor's OpenAPI or
   Swagger document (JSON, YAML, or `JSON.parse('…')` literals in a docs page bundle), and `refresh` reads each
   snapshot's `source` again. It sends a `User-Agent` naming the tool and an `Accept` preferring the OpenAPI media

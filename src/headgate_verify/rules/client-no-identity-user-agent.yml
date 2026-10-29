@@ -9,12 +9,12 @@
 # reported anywhere; a lowercase-first token (`shop-sync/1.4`) only in a User-Agent position, because path and value
 # literals like `"orders/123"`, `"reports/2024"` or `"key; value/9"` look the same. A User-Agent position is a
 # `user_agent=` keyword argument, a value under a `"User-Agent"` key (any case) in a dict, or an assignment to a name
-# containing `USER_AGENT` (any case) or ending `_UA`. The `;` form follows the same split. A literal that
-# starts with a browser token (`Mozilla`, `AppleWebKit`, `Chrome`, `Chromium`, `Safari`, `Gecko`, `Firefox`, `Version`,
-# `Edg`, `Edge`, `Opera`, `HTTP`, any case) is not a product token. Literals are read as in
-# `client-no-placeholder-contact`: each literal part of a plain, bytes, f- or t-string, an f-string format spec, and an
-# implicit concatenation JOINED (the token with an optional break between every two characters), unless the token is
-# in an interpolation's code. A later part of a concatenation is not read on its own.
+# containing `USER_AGENT` (any case) or ending `_UA`. The `;` form follows the same split. A literal that starts with
+# a browser token (`Mozilla`, `AppleWebKit`, `Chrome`, `Chromium`, `Safari`, `Gecko`, `Firefox`, `Trident`, `Version`,
+# `Edg`, `Edge`, `Opera`, `HTTP`, any case) is not a product token, and neither is the engine token `; Trident/7.0`.
+# Literals are read as in `client-no-placeholder-contact`: each literal part of a plain, bytes, f- or t-string, an
+# f-string format spec, and an implicit concatenation JOINED (the token with an optional break between every two
+# characters), unless the token is in an interpolation's code. A later part of a concatenation is not read on its own.
 #
 # DECISION: a bare name with no version (`{"User-Agent": "acme-client"}`) is NOT reported. Without the `/<digit>` it
 # cannot be told from a label, a header value or a package name, and every guess would be a false positive; the
@@ -38,17 +38,18 @@ utils:
   capital-token:
     any:
       - regex: '\(\+\s*(mailto:|https?://)'
-      - regex: ';\s*[A-Z][A-Za-z0-9_.\-]*/\d'
+      # a `;` clause; a browser's own engine token (`; Trident/7.0`, Internet Explorer 11) is none
+      - all: [{regex: ';\s*[A-Z][A-Za-z0-9_.\-]*/\d'}, {not: {regex: ';\s*Trident/\d'}}]
       # the start of a literal: not a later part of an implicit concatenation (read joined below)
       - kind: string_content
         regex: '^[A-Z][A-Za-z0-9_.\-]*/\d'
         not:
           any:
-            - {regex: '(?i)^(Mozilla|AppleWebKit|Chrome|Chromium|Safari|Gecko|Firefox|Version|Edg|Edge|Opera|HTTP)/'}
+            - {regex: '(?i)^(Mozilla|AppleWebKit|Chrome|Chromium|Safari|Gecko|Firefox|Version|Edg|Edge|Opera|Trident|HTTP)/'}
             - {inside: {kind: string, follows: {stopBy: end, kind: string}, inside: {kind: concatenated_string}}}
       - kind: format_specifier
         regex: '^:?[A-Z][A-Za-z0-9_.\-]*/\d'
-        not: {regex: '(?i)^(Mozilla|AppleWebKit|Chrome|Chromium|Safari|Gecko|Firefox|Version|Edg|Edge|Opera|HTTP)/'}
+        not: {regex: '(?i)^(Mozilla|AppleWebKit|Chrome|Chromium|Safari|Gecko|Firefox|Version|Edg|Edge|Opera|Trident|HTTP)/'}
   lowercase-token:
     any:
       - regex: ';\s*[a-z][A-Za-z0-9_.\-]*/\d'
@@ -57,11 +58,11 @@ utils:
         regex: '^[a-z][A-Za-z0-9_.\-]*/\d'
         not:
           any:
-            - {regex: '(?i)^(Mozilla|AppleWebKit|Chrome|Chromium|Safari|Gecko|Firefox|Version|Edg|Edge|Opera|HTTP)/'}
+            - {regex: '(?i)^(Mozilla|AppleWebKit|Chrome|Chromium|Safari|Gecko|Firefox|Version|Edg|Edge|Opera|Trident|HTTP)/'}
             - {inside: {kind: string, follows: {stopBy: end, kind: string}, inside: {kind: concatenated_string}}}
       - kind: format_specifier
         regex: '^:?[a-z][A-Za-z0-9_.\-]*/\d'
-        not: {regex: '(?i)^(Mozilla|AppleWebKit|Chrome|Chromium|Safari|Gecko|Firefox|Version|Edg|Edge|Opera|HTTP)/'}
+        not: {regex: '(?i)^(Mozilla|AppleWebKit|Chrome|Chromium|Safari|Gecko|Firefox|Version|Edg|Edge|Opera|Trident|HTTP)/'}
   # Where a lowercase token is a User-Agent: a `user_agent=` keyword, a value under a "User-Agent" key, or an
   # assignment to a name holding USER_AGENT or ending _UA.
   ua-position:
