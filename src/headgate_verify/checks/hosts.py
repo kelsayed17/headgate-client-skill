@@ -12,13 +12,16 @@ name another client class of the package (by its bare class name, in any module)
   ``metaclass=`` are not bases);
 * a client class whose ``super().__init__(...)`` passes no ``base_url=``, or passes something other than a
   module-level name of its module (a name bound by a module-level assignment or import; a literal, a parameter, an
-  attribute or any expression is reported);
-* a client class whose base URL name another client class of the package also passes, or whose base URL host another
-  class's base URL also names (hosts compare case-insensitively, ports ignored);
+  attribute or any expression is reported), or a conditional of two such names, ``LIVE if live else PAPER``: one
+  class on the two hosts of one API (live and paper, production and sandbox) chosen by a flag. Both arms must be
+  distinct module-level names on distinct hosts; a third arm (a nested conditional) or a literal arm is reported;
+* a client class whose base URL name (either arm's, for a conditional) another client class of the package also
+  passes, or whose base URL host another class's base URL also names (hosts compare case-insensitively, ports ignored);
 * a string that holds an absolute ``http(s)://`` URL whose host differs from the class's base URL host, passed as the
   URL (first argument or ``url=``) of ``self.get``/``post``/``put``/``patch``/``delete``/``head``/``stream``/
-  ``paginate`` in that class: a literal (plain, f- or t-string), a module-level constant of the class's module (or one
-  it imports from a sibling module, read there), or a class attribute read as ``self.<name>`` or ``<Class>.<name>``.
+  ``paginate`` in that class (for a conditional base URL, a host that is neither arm's): a literal
+  (plain, f- or t-string), a module-level constant of the class's module (or one it imports from a sibling module,
+  read there), or a class attribute read as ``self.<name>`` or ``<Class>.<name>``.
   When the class's base URL host cannot be read (no module-level string holds it), every such absolute URL is
   reported, since it cannot be shown to stay on the host.
 
@@ -65,6 +68,9 @@ RULE = Rule(
 )
 _BASE = "AsyncBaseClient"
 _VERBS = frozenset({"get", "post", "put", "patch", "delete", "head", "stream", "paginate"})
+_CONDITIONAL_ARMS = 2
+_CONDITIONAL_PARTS = 3
+"""A conditional expression's named children: the value if true, the condition and the value if false."""
 _ABSOLUTE = re.compile(r"^https?://", re.IGNORECASE)
 
 
@@ -168,9 +174,20 @@ def _constant_text(name: str, root: SgRoot, modules: Modules) -> str | None:
 
 @dataclass(frozen=True)
 class _Base:
+    """A class's base URL: the module-level name of each arm (one, or two for a conditional) and its host."""
+
     cls: _Class
-    name: str
-    host: str | None
+    names: tuple[str, ...]
+    hosts: tuple[str | None, ...]
+
+    @property
+    def name(self) -> str:
+        return " or ".join(self.names)
+
+    @property
+    def host(self) -> str | None:
+        """The host when the base URL has one arm whose host is read, else None."""
+        return self.hosts[0] if len(self.hosts) == 1 else None
 
 
 def _read_base(cls: _Class, modules: Modules) -> _Base | Finding:
@@ -178,14 +195,37 @@ def _read_base(cls: _Class, modules: Modules) -> _Base | Finding:
     value = _base_url(cls)
     if value is None:
         return cls.finding(f"class {cls.name} passes no base_url= to super().__init__")
-    if value.kind() != "identifier" or value.text() not in _module_names(cls.root):
+    arms = _arms(value)
+    if arms is None or any(arm.kind() != "identifier" or arm.text() not in _module_names(cls.root) for arm in arms):
         return cls.finding(
-            f"class {cls.name} passes base_url={value.text()}, which is not a module-level name; name each host "
-            "once at module level and pass that name",
+            f"class {cls.name} passes base_url={value.text()}, which is not a module-level name or a conditional of "
+            "two (`LIVE if live else PAPER`); name each host once at module level and pass that name",
             at=value,
         )
-    text = _constant_text(value.text(), cls.root, modules)
-    return _Base(cls, value.text(), None if text is None else _host(text))
+    names = tuple(arm.text() for arm in arms)
+    hosts = tuple(
+        _host(text) if (text := _constant_text(name, cls.root, modules)) is not None else None for name in names
+    )
+    if len(names) == _CONDITIONAL_ARMS:
+        if names[0] == names[1]:
+            return cls.finding(
+                f"class {cls.name} names {names[0]} in both arms of its base_url; use the name alone", at=value
+            )
+        if hosts[0] is not None and hosts[0] == hosts[1]:
+            return cls.finding(
+                f"class {cls.name} calls one host in both arms of its base_url ({hosts[0]}); a conditional base URL "
+                "chooses between two hosts",
+                at=value,
+            )
+    return _Base(cls, names, hosts)
+
+
+def _arms(value: SgNode) -> list[SgNode] | None:
+    """Return the arms of a base URL: the node itself, or the two outer arms of ``A if cond else B``, else None."""
+    if value.kind() != "conditional_expression":
+        return [value]
+    parts = value.named_children()
+    return [parts[0], parts[2]] if len(parts) == _CONDITIONAL_PARTS else None
 
 
 def _chained(clients: list[_Class]) -> set[str]:
@@ -226,24 +266,24 @@ def _check_distinct(bases: list[_Base]) -> list[Finding]:
     findings: list[Finding] = []
     for base in bases:
         cls = base.cls
-        first = by_name.setdefault(base.name, base)
-        if first is not base:
+        taken = next(((name, by_name[name]) for name in base.names if name in by_name), None)
+        if taken is not None:
+            name, first = taken
             findings.append(
                 cls.finding(
-                    f"class {cls.name} shares its base URL name {base.name} with class {first.cls.name}; one class "
-                    "per host"
+                    f"class {cls.name} shares its base URL name {name} with class {first.cls.name}; one class per host"
                 )
             )
             continue
-        if base.host is None:
-            continue
-        first = by_host.setdefault(base.host, base)
-        if first is not base:
+        by_name.update(dict.fromkeys(base.names, base))
+        clash = next(((host, by_host[host]) for host in base.hosts if host is not None and host in by_host), None)
+        if clash is not None:
+            host, first = clash
             findings.append(
-                cls.finding(
-                    f"class {cls.name} calls host {base.host}, as class {first.cls.name} does; one class per host"
-                )
+                cls.finding(f"class {cls.name} calls host {host}, as class {first.cls.name} does; one class per host")
             )
+            continue
+        by_host.update({host: base for host in base.hosts if host is not None})
     return findings
 
 
@@ -274,7 +314,9 @@ def _url_text(argument: SgNode, cls: _Class, modules: Modules) -> str | None:
 
 def _check_verbs(cls: _Class, base: _Base | None, modules: Modules) -> list[Finding]:
     """Report each absolute URL the class passes a verb on a host other than its base URL's."""
-    host, base_name = (None, None) if base is None else (base.host, base.name)
+    hosts = () if base is None else base.hosts
+    readable = bool(hosts) and None not in hosts
+    base_name = None if base is None or not readable else base.name
     findings: list[Finding] = []
     for call in cls.node.find_all(pattern="self.$VERB($$$)"):
         verb = call.get_match("VERB")
@@ -283,11 +325,11 @@ def _check_verbs(cls: _Class, base: _Base | None, modules: Modules) -> list[Find
         argument = _url_argument(call)
         text = None if argument is None else _url_text(argument, cls, modules)
         url_host = None if text is None else _host(text)
-        if url_host is None or url_host == host:
+        if url_host is None or (readable and url_host in hosts):
             continue
         where = (
-            f"but its base URL {base_name} is on host {host}"
-            if host is not None and base_name is not None
+            f"but its base URL {base_name} is on host{'s' if len(hosts) > 1 else ''} {' or '.join(map(str, hosts))}"
+            if base_name is not None
             else "but its base URL host cannot be read, so the URL cannot be shown to stay on it"
         )
         findings.append(

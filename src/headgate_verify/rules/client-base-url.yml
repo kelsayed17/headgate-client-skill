@@ -1,7 +1,9 @@
 # A client's base URL is a name, so its configuration reads as one block of constants.
 #
 # Reported: any `base_url=` keyword, in any call, whose value is not a name or an attribute (`_BASE_URL`,
-# `self._BASE`, a `base_url` parameter, `hosts.FRED`). A string, f-string, concatenation or call is reported. The
+# `self._BASE`, a `base_url` parameter, `hosts.FRED`), or a conditional of two of them (`_LIVE if live else _PAPER`,
+# the live and paper host of one API). A string, f-string, concatenation or call is reported, and so is a conditional
+# with a literal, call or nested-conditional arm. The
 # value is checked; a class attribute holding a literal is a `client-method-shape` matter.
 #
 # Ported without the source project's `ignores:` entry (one module of 26 one-endpoint publisher classes that pass a
@@ -20,4 +22,15 @@ files:
 rule:
   kind: keyword_argument
   has: {field: name, regex: '^base_url$'}
-  not: {has: {field: value, any: [{kind: identifier}, {kind: attribute}]}}
+  not:
+    has:
+      field: value
+      any:
+        - kind: identifier
+        - kind: attribute
+        - kind: conditional_expression
+          not:
+            has:
+              all:
+                - any: [{nthChild: 1}, {nthChild: 3}]
+                - not: {any: [{kind: identifier}, {kind: attribute}]}

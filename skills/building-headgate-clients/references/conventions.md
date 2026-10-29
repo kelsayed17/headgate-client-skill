@@ -61,7 +61,8 @@ keeps them in one package, one class per host (the Open-Meteo example).
 - **Subclass `AsyncBaseClient` directly**, with no other base and no decorator. One `super().__init__(...)` call, with
   keyword arguments and no `*`/`**` splat (`client-constructor`, `client-method-shape`, `one-class-per-host`).
 - **`base_url=` is a module-level name** bound to a string: `BASE_URL = "https://lda.gov"`. Never a literal in the
-  call, a parameter or an expression (`client-base-url`, `one-class-per-host`). Two classes never name the same host.
+  call, a parameter or an expression (`client-base-url`, `one-class-per-host`). Two classes never name the same host. One class may choose between the two hosts of one API (live and paper) with a
+  conditional of two module-level names, `base_url=LIVE_URL if live else PAPER_URL`.
 - **The base URL is a host with no path** (`client-base-url-has-no-path`). Every method's path spells the API's prefix
   out: `"api/v1/filings/"`, `t"api/v1/filings/{filing_uuid}/"`. A prefix cannot be a constant joined to the path (that
   is a built path, which the `client-paths-*` rules refuse), and it cannot ride a t-string hole (headgate escapes a
