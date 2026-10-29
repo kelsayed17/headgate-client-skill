@@ -242,7 +242,8 @@ def test_heading_name_mutation_fails_the_name_check(tmp_path: Path) -> None:
 
     assert check_names(package / "client.py", package / "docs_paths.json") == [
         (
-            "list_registrants reads GET api/v1/registrants/ and should be named get_registrants (or add an override "
+            "list_registrants reads GET api/v1/registrants/ and should be named get_registrants or walk_registrants "
+            "(or add an override "
             "with a reason)"
         )
     ]

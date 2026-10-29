@@ -33,7 +33,8 @@ the exit is `2`.
 Two readers take `[tool.headgate-verify]` from two places. The `headgate-verify` command reads the `pyproject.toml`
 nearest the **current working directory** (at or above it), not the one nearest the checked package, so run it from
 the project root. The naming test's `check_names` reads the `pyproject.toml` nearest the **package's `client.py`**,
-for `filler-words` and `post-reads`, unless the test passes `filler=` or `post_reads=` itself (see
+for `filler-words`, `method-prefixes` and `post-reads`, unless the test passes `filler=`, `prefixes=` or
+`post_reads=` itself (see
 [naming.md](naming.md)). Every key is a list of strings; an unknown key, or a value that is not a list of strings, is
 exit `2` for the command and a `ConfigError` for `check_names`.
 
@@ -48,6 +49,7 @@ write-name-fragments = ["order", "redeem"]         # REPLACES the defaults (the 
 |---|---|---|
 | `browser-user-agent-packages` | `[]` | `client-browser-user-agent-only-where-allowed` |
 | `filler-words` | `["api", "global", "locale", "market", "markets", "us"]` | `check_names`, in the naming test |
+| `method-prefixes` | `["fetch", "stream", "walk"]` | `check_names`, in the naming test |
 | `post-reads` | `[]` | `client-order-writes-name-retry`, `check_names`, in the naming test |
 | `rule-dirs` | `[]` | the command: the project's own rules, run beside these |
 | `write-name-fragments` | `["close_all_positions", "close_option_position", "close_position", "exercise_option", "liquidat", "multileg", "order", "orders", "payment", "transfer", "withdraw"]` | `client-order-writes-name-retry` |

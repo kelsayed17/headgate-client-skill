@@ -18,6 +18,10 @@ class PyprojectError(ValueError):
     """A ``pyproject.toml`` cannot be read, is not UTF-8 or is not valid TOML; the message names the file and why."""
 
 
+CALL_SHAPES: frozenset[str] = frozenset({"walk", "stream", "fetch"})
+"""The prefixes ``method-prefixes`` may list: a paged walk, a streamed body and a raw-bytes read."""
+
+
 class ConfigError(ValueError):
     """The ``pyproject.toml`` holding the config cannot be read, or its table is malformed; the message says how."""
 
@@ -30,6 +34,8 @@ class Config:
     """Package names allowed a browser-spoofing User-Agent."""
     filler_words: frozenset[str] = frozenset({"api", "locale", "us", "global", "markets", "market"})
     """Words ignored when comparing names."""
+    method_prefixes: frozenset[str] = frozenset({"walk", "stream", "fetch"})
+    """The call-shape prefixes (``walk_``, ``stream_``, ``fetch_``) a read may take in place of ``get_``."""
     post_reads: frozenset[str] = frozenset()
     """Method names that read by POST."""
     rule_dirs: frozenset[str] = frozenset()
@@ -106,6 +112,9 @@ def _from_file(pyproject: Path) -> Config:
             raise ConfigError(msg)
         if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
             msg = f"{pyproject}: {key!r} in [tool.headgate-verify] must be a list of strings"
+            raise ConfigError(msg)
+        if key == "method-prefixes" and not set(value) <= CALL_SHAPES:
+            msg = f"{pyproject}: 'method-prefixes' in [tool.headgate-verify] may list only {sorted(CALL_SHAPES)}"
             raise ConfigError(msg)
         values[known[key]] = _rule_dirs(pyproject, value) if key == "rule-dirs" else frozenset(value)
     return Config(**values)

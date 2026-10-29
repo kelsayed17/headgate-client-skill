@@ -522,8 +522,8 @@ def test_a_path_ending_in_a_hole_names_no_action() -> None:
 
 
 def test_knobs_passed_in_skip_the_project_table(tmp_path: Path) -> None:
-    """With ``filler`` and ``post_reads`` both passed, no ``pyproject.toml`` is read."""
+    """With ``filler``, ``post_reads`` and ``prefixes`` all passed, no ``pyproject.toml`` is read."""
     (tmp_path / "pyproject.toml").write_text("[tool.headgate-verify]\nnot-a-key = []\n", encoding="utf-8")
     client = _client(tmp_path, [("get_orders", 'get "v1/orders"', "")])
     snapshot = _snapshot(tmp_path, [_named("GET", "/v1/orders", "listOrders")])
-    assert check_names(client, snapshot, filler=frozenset(), post_reads=()) == []
+    assert check_names(client, snapshot, filler=frozenset(), post_reads=(), prefixes=()) == []
