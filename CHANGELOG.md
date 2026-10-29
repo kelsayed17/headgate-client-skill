@@ -12,6 +12,17 @@ All notable changes to this project are recorded here. The format follows
   reaches the wire only as the enclosing function's own `**params: Unpack[...]`, untouched: not rebound or mutated,
   not merged, not handed to a collector leg as a keyword, not written into the path). The lda example's structs
   declare `gc=False`.
+- `write-name-fragments` defaults also hold `multileg`, `close_position`, `close_all_positions`,
+  `close_option_position`, `liquidat` and `exercise_option`, so `client-order-writes-name-retry` reads a multi-leg
+  order, a position close, a liquidation and an options exercise as executing writes by default.
+- `client-serde-imported-by-name` has fixtures for `headgate.pydantic` imported whole, as it does for `msgspec`.
+- `client-order-writes-name-retry` skips a method named in `post-reads`: a read by POST (`search_orders`) is named
+  like a read, so a fragment in its name no longer makes it a write.
+- `rule-dirs` in `[tool.headgate-verify]` names directories of a project's own rules (`<id>.yml`, in the shipped
+  rules' format), relative to that `pyproject.toml`. The command runs them beside the shipped rules, with their
+  `note` as the fix, and an allow comment may name their ids. A missing directory, a file that is not valid YAML, a
+  rule ast-grep refuses, a `.yaml` file, or an id a shipped rule, a check, a reserved id or another project rule
+  holds is a usage error (exit `2`), before any package is read.
 - `headgate-snapshot write <docs_paths.json> <url or file>` writes the docs snapshot from the vendor's OpenAPI or
   Swagger document (JSON, YAML, or `JSON.parse('…')` literals in a docs page bundle), and `refresh` reads each
   snapshot's `source` again. It sends a `User-Agent` naming the tool and an `Accept` preferring the OpenAPI media

@@ -23,7 +23,7 @@ its fix indented by four spaces; with `--format json` each is an object with `ru
 |---|---|
 | `0` | no error (warnings may have been printed) |
 | `1` | at least one error |
-| `2` | a usage error: no path given, a missing path, a path with no client package, or a malformed config table |
+| `2` | a usage error: no path, a missing path, a path with no client package, a bad config table or project rule |
 
 A run that checks nothing is not clean: every path under which no client package is found is named on stderr, and
 the exit is `2`.
@@ -40,15 +40,24 @@ exit `2` for the command and a `ConfigError` for `check_names`.
 ```toml
 [tool.headgate-verify]
 browser-user-agent-packages = ["scraped_portal"]   # packages whose host forces a browser User-Agent
-write-name-fragments = ["order", "orders", "transfer", "withdraw", "payment"]
+post-reads = ["search_orders"]                     # reads by POST: named like reads, never held to retry=
+write-name-fragments = ["order", "redeem"]         # REPLACES the defaults (the table below): list every fragment
 ```
 
 | Key | Default | Read by |
 |---|---|---|
 | `browser-user-agent-packages` | `[]` | `client-browser-user-agent-only-where-allowed` |
 | `filler-words` | `["api", "global", "locale", "market", "markets", "us"]` | `check_names`, in the naming test |
-| `post-reads` | `[]` | `check_names`, in the naming test |
-| `write-name-fragments` | `["order", "orders", "payment", "transfer", "withdraw"]` | `client-order-writes-name-retry` |
+| `post-reads` | `[]` | `client-order-writes-name-retry`, `check_names`, in the naming test |
+| `rule-dirs` | `[]` | the command: the project's own rules, run beside these |
+| `write-name-fragments` | `["close_all_positions", "close_option_position", "close_position", "exercise_option", "liquidat", "multileg", "order", "orders", "payment", "transfer", "withdraw"]` | `client-order-writes-name-retry` |
+
+`rule-dirs` entries are directories relative to that `pyproject.toml`. Each `<id>.yml` in them is a rule in the
+same format as the shipped ones, run beside them, with its `note` as the fix and allow comments naming its id. A
+project rule may not take the id of a shipped rule, a check or a reserved id. A directory that does not exist, a
+file that is not valid YAML, a rule ast-grep refuses, a `.yaml` file (rules are `.yml`) or a taken id is exit `2`,
+before any package is read. Rules are read on every run. Test a project rule as the shipped ones are tested: a
+package per case, checked with `headgate_verify.engine.verify(paths, load_config(root))`.
 
 `one-flavour` reads a different file: the `pyproject.toml` nearest the checked **package**, for the headgate extra
 its flavour needs.
