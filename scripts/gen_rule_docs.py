@@ -149,9 +149,10 @@ write-name-fragments = ["order", "orders", "transfer", "withdraw", "payment"]
 _MIDDLE = """
 `rule-dirs` entries are directories relative to that `pyproject.toml`. Each `<id>.yml` in them is a rule in the
 same format as the shipped ones, run beside them, with its `note` as the fix and allow comments naming its id. A
-project rule may not take the id of a shipped rule, a check or a reserved id; a directory that does not exist, a rule
-that will not load or a taken id is exit `2`. Test a project rule as the shipped ones are tested: a package per case,
-checked with `headgate_verify.engine.verify(paths, load_config(root))`.
+project rule may not take the id of a shipped rule, a check or a reserved id. A directory that does not exist, a
+file that is not valid YAML, a rule ast-grep refuses, a `.yaml` file (rules are `.yml`) or a taken id is exit `2`,
+before any package is read. Rules are read on every run. Test a project rule as the shipped ones are tested: a
+package per case, checked with `headgate_verify.engine.verify(paths, load_config(root))`.
 
 `one-flavour` reads a different file: the `pyproject.toml` nearest the checked **package**, for the headgate extra
 its flavour needs.

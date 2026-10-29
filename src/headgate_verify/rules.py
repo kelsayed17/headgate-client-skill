@@ -25,6 +25,7 @@ from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Any
 
 import yaml
+from ast_grep_py import SgRoot
 
 from headgate_verify.config import Config
 from headgate_verify.exemptions import BAD_EXEMPTION
@@ -162,23 +163,43 @@ def load_rules() -> tuple[YamlRule, ...]:
     )
 
 
-@functools.cache
 def load_project_rules(rule_dirs: frozenset[str]) -> tuple[YamlRule, ...]:
     """Return the rules in each of ``rule_dirs``' ``*.yml``, sorted by id; the project's own, beside the shipped ones.
 
-    Raise ``ValueError`` for a rule the shipped rules could not load either, and for an id that a shipped rule, a
-    reserved id or another project rule already holds: one id names one rule (the engine also refuses a check's id).
+    Read afresh on every call, so a rule edited between two runs in one process is the edited rule. Raise
+    ``ValueError`` for a file that is not valid YAML, a rule the shipped rules could not load either, an ast-grep rule
+    ast-grep refuses (checked here, before any package is read), a ``.yaml`` file (rules are ``.yml``; one would
+    otherwise be skipped silently), and an id that a shipped rule, a reserved id or another project rule already
+    holds: one id names one rule (the engine also refuses a check's id).
     """
     taken = {rule.id for rule in load_rules()} | {rule.id for rule in RESERVED}
     rules: list[YamlRule] = []
     for directory in sorted(rule_dirs):
+        misnamed = sorted(Path(directory).glob("*.yaml"))
+        if misnamed:
+            msg = f"{misnamed[0]}: a project rule is a .yml file; rename it, or it would not run"
+            raise ValueError(msg)
         for entry in sorted(Path(directory).glob("*.yml")):
-            rule = rule_from_yaml(entry.read_text(encoding="utf-8"), entry.name.removesuffix(".yml"))
+            rule = _project_rule(entry)
             if rule.id in taken:
                 raise _invalid(rule.id, f"{entry} takes an id another rule already holds")
             taken.add(rule.id)
             rules.append(rule)
     return tuple(sorted(rules, key=lambda rule: rule.id))
+
+
+def _project_rule(entry: Path) -> YamlRule:
+    """Load the rule in ``entry`` and prove ast-grep accepts it; raise ``ValueError`` naming the file when not."""
+    rule_id = entry.name.removesuffix(".yml")
+    try:
+        rule = rule_from_yaml(entry.read_text(encoding="utf-8"), rule_id)
+    except yaml.YAMLError as error:
+        raise _invalid(rule_id, f"{entry} is not valid YAML ({error})") from error
+    try:
+        SgRoot("", LANGUAGE).root().find_all(rule.config)
+    except Exception as error:  # ast-grep raises a bare Exception for an unknown key, RuntimeError for a bad matcher
+        raise _invalid(rule_id, f"{entry}: ast-grep refuses the rule ({error})") from error
+    return rule
 
 
 def run_rules(pkg: Package, modules: Modules, rules: Sequence[YamlRule], config: Config) -> list[Finding]:

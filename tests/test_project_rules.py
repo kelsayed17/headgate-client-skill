@@ -85,9 +85,61 @@ def test_an_allow_comment_names_a_project_rule(tmp_path: Path) -> None:
     assert not rules & {"acme-no-forbidden", "bad-exemption"}
 
 
-def test_a_project_rule_is_among_all_rules() -> None:
+def test_without_a_config_all_rules_is_the_shipped_set(tmp_path: Path) -> None:
     """``all_rules`` without a config is the shipped set; the project's rules join it only with one."""
+    config = load_config(_project(tmp_path))
     assert "acme-no-forbidden" not in {rule.id for rule in all_rules()}
+    assert "acme-no-forbidden" in {rule.id for rule in all_rules(config)}
+
+
+def test_two_project_rules_may_not_share_an_id(tmp_path: Path) -> None:
+    """The same id in two rule directories is refused, as a clash with a shipped rule is."""
+    _project(tmp_path)
+    write(tmp_path, "pyproject.toml", '[tool.headgate-verify]\nrule-dirs = ["rules", "more"]\n')
+    write(tmp_path, "more/acme-no-forbidden.yml", _RULE.format(rule_id="acme-no-forbidden"))
+    with pytest.raises(ValueError, match="acme-no-forbidden"):
+        verify([tmp_path / "clients"], load_config(tmp_path))
+
+
+def test_a_rule_edited_between_runs_is_read_again(tmp_path: Path) -> None:
+    """Rules are read on every run, so one process sees an edit, and a deleted rule stops reporting."""
+    config = load_config(_project(tmp_path))
+    rule = tmp_path / "rules" / "acme-no-forbidden.yml"
+    rule.write_text(_RULE.format(rule_id="acme-no-forbidden").replace("a project rule's message", "edited"))
+    assert "edited" in {finding.message for finding in verify([tmp_path / "clients"], config)}
+    rule.unlink()
+    assert "acme-no-forbidden" not in {finding.rule for finding in verify([tmp_path / "clients"], config)}
+
+
+@pytest.mark.parametrize(
+    ("body", "reason"),
+    [
+        ("id: acme-bad\nmessage: [unclosed\n", "not valid YAML"),
+        (_RULE.format(rule_id="acme-bad").replace("pattern: self.forbidden()", "kind: not_a_real_kind"), "refuses"),
+        (_RULE.format(rule_id="acme-bad").replace("pattern: self.forbidden()", "bogus_key: 1"), "refuses"),
+    ],
+    ids=["malformed-yaml", "unknown-kind", "unknown-key"],
+)
+def test_a_rule_that_will_not_load_is_a_usage_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], body: str, reason: str
+) -> None:
+    """A broken rule file is exit 2 naming the file, not a traceback or exit 1, and before any package is read."""
+    _project(tmp_path)
+    write(tmp_path, "rules/acme-bad.yml", body)
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["clients"]) == USAGE_ERROR
+    err = capsys.readouterr().err
+    assert "acme-bad.yml" in err
+    assert reason in err
+    assert "checked" not in err
+
+
+def test_a_yaml_file_is_refused_not_skipped(tmp_path: Path) -> None:
+    """A rule saved as ``.yaml`` would silently never run, so it is an error naming the file."""
+    _project(tmp_path)
+    write(tmp_path, "rules/acme-other.yaml", _RULE.format(rule_id="acme-other"))
+    with pytest.raises(ValueError, match=r"acme-other\.yaml"):
+        verify([tmp_path / "clients"], load_config(tmp_path))
 
 
 @pytest.mark.parametrize("taken", ["client-base-url", "bad-exemption", CHECKS[0].rule.id])
