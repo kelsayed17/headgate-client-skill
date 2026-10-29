@@ -11,7 +11,6 @@ All notable changes to this project are recorded here. The format follows
   names on two hosts, for a client that serves the live and paper (or production and sandbox) host of one API. Both
   names count toward the other classes' distinct-host check, and an absolute URL on either host is the class's own. A
   literal arm, a nested conditional, one name in both arms and two names on one host are reported.
-||||||| 47c041d
 - `check_names` takes a method's call-shape prefix from its body: `walk_` for `self.paginate(...)`, `stream_` for
   `self.stream(...)` and `fetch_` for a verb call with `expect=as_bytes`, through a one-level delegate too. `get_`
   stays valid for every shape, and a `get_` and a `walk_` may read one path (a single page beside the whole walk), so a
