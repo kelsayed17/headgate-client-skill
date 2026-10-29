@@ -30,9 +30,9 @@ method is named from them. No word list is kept: every rule reads what the endpo
   generated schema name often repeats the id's verb (`CreateOrderRequest`).
 - **The verb is the first word the endpoint does not state.** `listClients` on `/clients/` is `list` + `clients`;
   `StockLatestBars` on `/stocks/bars/latest` states every word, so it has no verb.
-- **A read** is `get_` and the id's words without its verb. The call-shape prefix is the caller's: a project that
+- **A read** is `get_` and the id's words without its verb. The call-shape prefix is the caller's: a caller that
   names walks `walk_` or raw bodies `fetch_` passes that prefix to `spec_name`, and the id's own read verb (`list`,
-  `retrieve`, `fetch`) gives way to it.
+  `retrieve`, `fetch`) gives way to it. `check_names` passes it for you: see "Call-shape prefixes" below.
 - **A write** keeps the id's verb. When that verb only repeats the HTTP verb (`postOrder`), it takes the summary's
   first word instead ("Create an Order" gives `create_order`); a summary that starts with a stated word is a noun
   phrase, so the id's verb stays (`post_order`). An id that states every word names its verb in the path's last
@@ -69,6 +69,23 @@ method is named from them. No word list is kept: every rule reads what the endpo
 a project with its own call shapes can name from the spec the same way.
 
 ## Names from the path
+
+### Call-shape prefixes
+
+A method may take the prefix of its body's call shape in place of `get_`, read from the body (through a one-level
+delegate too): `walk_` for `return self.paginate(...)`, `stream_` for `async with self.stream(...)` and `fetch_` for a
+verb call with `expect=as_bytes`. `get_` stays valid for every shape, so a client that names a paged read `get_clients`
+needs no change. Two methods may read one path when their shapes differ, which is how a single page and the whole walk
+of one endpoint sit together:
+
+```python
+async def get_filings(self, **params: Unpack[FilingParams]) -> FilingsPage: ...  # one page: self.get
+def walk_filings(self, **params: Unpack[FilingParams]) -> Paginated[Filing]: ...  # every page: self.paginate
+```
+
+Two methods of one shape on a path both keep the plain `get_` name (a `walk_` beside a `get_` that also paginates is reported), and an override that begins `get_` takes the prefixes like any derived name. So is a prefix that is not the method's own shape
+(`fetch_filings` over a `self.get` without `expect=as_bytes`). `method-prefixes` in `[tool.headgate-verify]` lists
+the prefixes a project allows (`walk`, `stream`, `fetch`); `[]` keeps every read `get_`.
 
 A read (a `GET`, or a method listed in `post_reads`) is named `get_` plus the literal words of its path
 (`endpoint_name`):
@@ -156,13 +173,14 @@ returns one sentence per problem, so a failing assertion says what to fix. With 
 | `exempt_writes` | write methods the naming rule skips |
 | `post_reads` | methods that read by `POST`, named like reads; the project's `post-reads` when omitted |
 | `filler` | the filler words; the project's `filler-words` when omitted, else the defaults above |
+| `prefixes` | the call-shape prefixes a read may take; the project's `method-prefixes` when omitted, else all three |
 
-When `filler` or `post_reads` is not passed, `check_names` reads it from `[tool.headgate-verify]`
-(`filler-words`, `post-reads`) in the `pyproject.toml` nearest the package's `client.py`, falling back to the
+When `filler`, `post_reads` or `prefixes` is not passed, `check_names` reads it from `[tool.headgate-verify]`
+(`filler-words`, `post-reads`, `method-prefixes`) in the `pyproject.toml` nearest the package's `client.py`, falling back to the
 defaults when there is no such table; an argument passed in wins. That is the package's pyproject, while the
 `headgate-verify` command reads the one nearest its working directory ([verifier.md](verifier.md#configuration)), so
 in a project whose packages sit under the root's `pyproject.toml` both read the same table. No verifier rule reads
-these two keys: the naming test is their reader.
+these keys: the naming test is their reader.
 
 ## Overrides
 
