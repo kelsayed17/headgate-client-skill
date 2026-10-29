@@ -7,10 +7,14 @@ Reported:
 
 * no ``__init__.py``; an ``__init__.py`` holding no docstring; any statement in it after the docstring (a re-export,
   an ``__all__``, an import), one finding per statement. Comments are allowed;
-* no ``models.py``; no ``docs_paths.json``;
+* no ``models.py`` in a package that declares a model: a class based on ``Struct``, ``BaseModel`` or ``TypedDict``
+  defined in a module other than ``models.py``, or an import from a ``models`` module. A package with no model (a
+  client that returns raw bytes or nothing) needs none. No ``docs_paths.json``: it sits in the package, so it ships
+  in the wheel as package data;
 * a ``docs_paths.json`` that is not valid JSON or breaks the docs snapshot schema (``headgate_verify.naming``), at its
   line 1. Whether the client's names follow it is the client's own ``test_method_names.py``'s business;
-* no tests directory holding both ``test_client.py`` and ``test_method_names.py``. The tests directory is
+* no tests directory holding both a client test and ``test_method_names.py``. A client test is ``test_client.py`` or
+  one file per host, ``test_client_<host>.py`` (``test_client*.py``). The tests directory is
   ``<package>/tests/``, ``tests/<package name>/`` beside the package (``<package>/../tests/<package name>/``, as the
   conventions draw it; ruling R14), or ``tests/<package name>/`` under the project root, the directory of the nearest
   ``pyproject.toml`` at or above the package (with no ``pyproject.toml`` only the first two are looked for). When one
@@ -26,7 +30,7 @@ from typing import TYPE_CHECKING
 from headgate_verify.config import nearest_pyproject
 from headgate_verify.finding import Rule
 from headgate_verify.snapshot import SnapshotError, load_snapshot
-from headgate_verify.syntax import line, statements, string_prefix
+from headgate_verify.syntax import bases, classes, line, statements, string_prefix
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -42,13 +46,16 @@ RULE = Rule(
     id="package-layout",
     severity="error",
     fix="Add the file the finding names: a docstring-only `__init__.py`, `models.py`, a schema-valid "
-    "`docs_paths.json`, `test_client.py` and `test_method_names.py` in the tests directory, and `pagination.py` "
-    "beside a paged client.",
+    "`docs_paths.json`, `test_client.py` (or one `test_client_<host>.py` per host) and `test_method_names.py` in the "
+    "tests directory, and `pagination.py` beside a paged client.",
 )
 _INIT = "__init__.py"
 _DOCS = "docs_paths.json"
-_REQUIRED = ("models.py", _DOCS)
-_TESTS = ("test_client.py", "test_method_names.py")
+_MODELS = "models.py"
+_REQUIRED = (_DOCS,)
+_CLIENT_TESTS = "test_client*.py"
+_METHOD_NAMES = "test_method_names.py"
+_MODEL_BASES = ("Struct", "BaseModel", "TypedDict")
 _PAGINATION = "pagination.py"
 
 
@@ -89,11 +96,30 @@ def _check_init(pkg: Package, modules: Modules) -> list[Finding]:
     return findings
 
 
-def _check_required(pkg: Package) -> list[Finding]:
+def _declares_model(pkg: Package, modules: Modules) -> bool:
+    """Return whether a module besides ``models.py`` defines a model class or imports from a ``models`` module."""
+    for path, root in modules.items():
+        if path == pkg.root / _MODELS:
+            continue
+        for statement in root.root().find_all(kind="import_from_statement"):
+            module = statement.field("module_name")
+            if module is not None and module.text().rsplit(".", 1)[-1] == "models":
+                return True
+        if any(
+            base.text().rsplit(".", 1)[-1] in _MODEL_BASES
+            for _, node, _ in classes({path: root})
+            for base in bases(node)
+        ):
+            return True
+    return False
+
+
+def _check_required(pkg: Package, modules: Modules) -> list[Finding]:
+    names = list(_REQUIRED)
+    if _declares_model(pkg, modules):
+        names.insert(0, _MODELS)
     return [
-        _missing(pkg, f"the package {pkg.root.name} has no {name}")
-        for name in _REQUIRED
-        if not (pkg.root / name).is_file()
+        _missing(pkg, f"the package {pkg.root.name} has no {name}") for name in names if not (pkg.root / name).is_file()
     ]
 
 
@@ -116,10 +142,14 @@ def _test_dirs(pkg: Package) -> list[Path]:
     return list(dict.fromkeys(candidates))
 
 
+def _has_tests(directory: Path) -> bool:
+    return any(directory.glob(_CLIENT_TESTS)) and (directory / _METHOD_NAMES).is_file()
+
+
 def _check_tests(pkg: Package) -> list[Finding]:
     candidates = _test_dirs(pkg)
     existing = [directory for directory in candidates if directory.is_dir()]
-    if any(all((directory / name).is_file() for name in _TESTS) for directory in existing):
+    if any(_has_tests(directory) for directory in existing):
         return []
     if not existing:
         looked = " or ".join(str(directory) for directory in candidates)
@@ -127,8 +157,11 @@ def _check_tests(pkg: Package) -> list[Finding]:
     directory = existing[0]
     return [
         _missing(pkg, f"the tests directory {directory} has no {name}")
-        for name in _TESTS
-        if not (directory / name).is_file()
+        for name, present in (
+            ("test_client.py (or a test_client_<host>.py per host)", any(directory.glob(_CLIENT_TESTS))),
+            (_METHOD_NAMES, (directory / _METHOD_NAMES).is_file()),
+        )
+        if not present
     ]
 
 
@@ -153,7 +186,7 @@ def check(pkg: Package, modules: Modules, config: Config) -> list[Finding]:
     del config
     return [
         *_check_init(pkg, modules),
-        *_check_required(pkg),
+        *_check_required(pkg, modules),
         *_check_snapshot(pkg),
         *_check_tests(pkg),
         *_check_pagination(pkg, modules),

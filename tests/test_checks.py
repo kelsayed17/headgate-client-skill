@@ -58,6 +58,7 @@ _CLAUSES: dict[str, tuple[str, int]] = {
     "package-layout/fail/init_reexports": ("__init__.py holds a docstring only", 2),
     "package-layout/fail/init_no_docstring": ("__init__.py holds no docstring", 1),
     "package-layout/fail/no_models": ("has no models.py", 1),
+    "package-layout/fail/models_defined_in_client": ("has no models.py", 1),
     "package-layout/fail/no_docs_paths": ("has no docs_paths.json", 1),
     "package-layout/fail/docs_paths_invalid_json": (
         "docs_paths.json is not a valid docs snapshot: the file is not valid JSON",

@@ -1,3 +1,5 @@
+from .models import Items
+
 from headgate import AsyncBaseClient, Rate
 
 API = "https://api.one.example"

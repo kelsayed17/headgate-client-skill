@@ -179,7 +179,7 @@ prints it under the finding; `--format json` gives it as `fix`.
 | `model-has-no-provider-prefix` | Drop the provider name from the class name: `LdaFiling` in package `lda` is `Filing`. |
 | `one-class-per-host` | Give each host its own class, subclassing only AsyncBaseClient and passing `base_url=` a module-level name of its module; move a call to another host into that host's class. |
 | `one-flavour` | Use one model flavour (msgspec or pydantic) across the package, and declare `headgate[<flavour>]` in the nearest pyproject.toml. |
-| `package-layout` | Add the file the finding names: a docstring-only `__init__.py`, `models.py`, a schema-valid `docs_paths.json`, `test_client.py` and `test_method_names.py` in the tests directory, and `pagination.py` beside a paged client. |
+| `package-layout` | Add the file the finding names: a docstring-only `__init__.py`, `models.py`, a schema-valid `docs_paths.json`, `test_client.py` (or one `test_client_<host>.py` per host) and `test_method_names.py` in the tests directory, and `pagination.py` beside a paged client. |
 | `bad-exemption` | Give the allow comment a reason after `--` and name a rule it covers on that line or block, or delete it. |
 | `parse-error` | Make the module a readable UTF-8 file that Python's own parser accepts; no other rule reads it until then. |
 

@@ -7,6 +7,10 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- `package-layout` reads a package's real shape: the client test may be one file per host (`test_client_<host>.py`, any
+  file matching `test_client*.py`) beside `test_method_names.py`, and `models.py` is required only when the package
+  declares a model (a `Struct`, `BaseModel` or `TypedDict` class in another module, or an import from `models`), so a
+  client that returns raw bytes needs none. `docs_paths.json` stays inside the package, where it ships as package data.
 - `one-class-per-host` accepts a conditional `base_url`: `LIVE_URL if live else PAPER_URL`, two distinct module-level
   names on two hosts, for a client that serves the live and paper (or production and sandbox) host of one API. Both
   names count toward the other classes' distinct-host check, and an absolute URL on either host is the class's own. A

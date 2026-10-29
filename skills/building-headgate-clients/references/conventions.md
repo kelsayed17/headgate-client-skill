@@ -43,11 +43,11 @@ Each rule names the verifier rule that checks it, where one does; [verifier.md](
 <provider>/
   __init__.py           a docstring only: no imports, no re-exports, no __all__
   client.py             one AsyncBaseClient subclass per host
-  models.py             wire models, and a <Endpoint>Params TypedDict per endpoint's query
+  models.py             wire models, and a <Endpoint>Params TypedDict per endpoint's query; omitted when there is none
   pagination.py         pagers and page budgets, if the API pages; never a page loop
-  docs_paths.json       the docs snapshot
+  docs_paths.json       the docs snapshot, inside the package so it ships in the wheel (declare it as package data)
   tests/                (or tests/<provider>/ beside the package, or under the project root)
-    test_client.py      offline tests through the real headgate stack
+    test_client.py      offline tests through the real headgate stack (or test_client_<host>.py, one per host)
     test_method_names.py  the naming test
     fixtures/           bodies recorded from the live API
     __snapshots__/      syrupy snapshots of the decoded values
