@@ -1,0 +1,186 @@
+# Query parameters are the method's own `**params: Unpack[<X>Params]` TypedDict, forwarded untouched.
+#
+# A query key is a field of the endpoint's TypedDict, so its name and type are declared once and checked by the type
+# checker at every call. A path segment (anything in the path t-string) stays a plain named argument, a JSON body stays
+# a model behind a writer, and a header stays what client-method-shape lets it be.
+#
+# client-method-shape already pins a public method's `params=` to the bare name `params`, a request parameter. That
+# passes a NAMED `params: XParams` (not a collector), and it does not read an exempted method, a leg's callers'
+# keywords, a rebinding before the request, or a query written into the path. This rule asks one question of every
+# request: does the query come, untouched, from the enclosing function's own `**params: Unpack[...]`?
+#
+# Scope: every module of the package. An auth flow and a pager are read too; they hold no request sink with `params=`
+# (an auth flow's TypedDict is splatted into an OAuth client's collector, which is that client's own forward).
+#
+# A SINK is a call `<receiver>.get/post/put/patch/delete/head/paginate/stream(...)`, any receiver (a module-function
+# leg's is its first parameter). THE NEAREST FUNCTION of a node is the first enclosing `def` or `lambda`; a COLLECTOR
+# FUNCTION is a `def` with a `**params` parameter annotated `Unpack[...]` (or `typing.Unpack[...]`). Reported:
+#
+#   1. a `params=` at a sink unless its value is the bare name `params` AND the nearest function is a collector
+#      function. A named `params`, a dict literal, a `dict(...)`, a walrus, a merge `{**_DEFAULTS, **params}` (a fixed
+#      query belongs to the auth flow or the caller), and a lambda's or nested function's own `params` all fail;
+#   2. in a collector function (nearest), the collector REBOUND or MUTATED: an assignment or augmented assignment whose
+#      target IS the collector (`params = ...`, `params[...] = ...`, `params.x = ...`, or an element of an unpacking
+#      target, `params, x = ...`; not `self.params`), a walrus, a `for`/`with`/`except` target, `del params[...]`, or a
+#      method called on it other than the readers `get`, `keys`, `values`, `items`; and a nested function's
+#      `nonlocal params` (a `global params` beside a `**params` parameter is a SyntaxError). Reading a key is allowed,
+#      in a target too: `self._seen[params["date"]] = True`, `self._hits[params["date"]] += 1` and
+#      `del self._cache[params["date"]]` write to another object;
+#   3. a call that splats `**params` beside a keyword argument or a second splat (the keyword lands in the callee's
+#      collector), and a `self._<leg>(...)` / `_<fn>(...)` call that splats anything but `**params`;
+#   4. a keyword argument handed to a LEG WITH A COLLECTOR: `self._<leg>(..., k=v)` where the class defines `_<leg>`
+#      (decorated or not) as a collector function, or `_<fn>(..., k=v)` where the module does. A collector leg takes
+#      its other parameters positionally, so a keyword can only be a query key;
+#   5. a `**params` parameter not annotated `Unpack[...]` (`**params: Any`, bare `**params`);
+#   6. a query written into the PATH: a t-string path (the first positional argument of a sink) holding a `?`, which
+#      makes a hole a query value; and a plain-string path holding a `?` at a sink that also passes `params=`, because
+#      httpx REPLACES the path's query with `params=`.
+#
+# ALLOWED, deliberately: a path segment, body or header from a named argument (other rules own those); the transport
+# knobs (`retry=`, `timeout=`, `deadline=`, `follow_redirects=`, `cache_ttl=`, `expect=`) as keywords at the sink; a
+# constant query in a plain-string path with no `params=` beside it; `self.params`/`request.params` attributes; a
+# struct constructor's `params=` (`ToolCall(params=...)`), which is not a sink; and a positional argument to a
+# collector leg (it binds a named parameter, never the collector).
+#
+# DISCLOSED: dataflow is approximated by NAME. A sink reached through an alias (`send = self.get`) or
+# `functools.partial` is not read; a leg inherited from another module, or a leg called by attribute on something
+# other than `self`, is not looked up for clause 4; and a `params` local in a function WITHOUT a collector, splatted
+# alone into an OAuth client's collector (clause 3's allowed case), is that auth flow's own business.
+#
+# CHANGED from the source rule: a write target must BE the collector (the source reported any target holding the
+# name, so `self._seen[params["k"]] = True` read as a mutation); the scope is every module of the package; the
+# source's measurements and its one provider's shared leg are dropped from this header, and a finding is exempted by
+# an allow comment with a reason.
+id: client-query-params-are-a-typeddict
+language: python
+severity: error
+message: a query parameter reaches the wire from something other than the method's own `**params` TypedDict
+note: >-
+  Every query key is a field of the method's `**params: Unpack[<Method>Params]` TypedDict, forwarded untouched as
+  `params=params`. A path segment stays a named argument in the t-string; a body stays a model behind a writer. Move
+  the named argument into the TypedDict (`Required[...]` when the API requires it) and let the caller pass it.
+files:
+  - '*.py'
+utils:
+  sink-call:
+    kind: call
+    has:
+      field: function
+      kind: attribute
+      has: {field: attribute, regex: '^(get|post|put|patch|delete|head|paginate|stream)$'}
+  unpack-collector:
+    kind: typed_parameter
+    all:
+      - has: {kind: dictionary_splat_pattern, has: {kind: identifier, regex: '^params$'}}
+      - has: {field: type, regex: '^(typing\.)?Unpack\['}
+  collector-fn:
+    kind: function_definition
+    has: {field: parameters, has: {matches: unpack-collector}}
+  # The name `params` itself, not the attribute of `x.params`.
+  params-name:
+    kind: identifier
+    regex: '^params$'
+    not: {inside: {kind: attribute, field: attribute}}
+  # A target that IS the collector: the name, `params[...]`, `params.<x>`, or an element of an unpacking target
+  # (`params, x = ...`, `[*params] = ...`, `with f() as (a, params)`). A target that only READS it
+  # (`self._seen[params["k"]]`) is not one.
+  params-target:
+    any:
+      - matches: params-name
+      - {kind: subscript, has: {field: value, matches: params-name}}
+      - {kind: attribute, has: {field: object, matches: params-name}}
+      - {kind: list_splat_pattern, has: {matches: params-name}}
+      - any: [{kind: pattern_list}, {kind: tuple_pattern}, {kind: list_pattern}, {kind: tuple}, {kind: list}]
+        has: {matches: params-target}
+  # A statement or expression that rebinds or mutates `params`.
+  writes-params:
+    any:
+      - {kind: assignment, has: {field: left, matches: params-target}}
+      - {kind: augmented_assignment, has: {field: left, matches: params-target}}
+      - {kind: named_expression, has: {field: name, matches: params-name}}
+      - {kind: for_statement, has: {field: left, matches: params-target}}
+      - {kind: as_pattern, has: {field: alias, has: {matches: params-target}}}
+      - {kind: delete_statement, has: {any: [{matches: params-target}, {kind: expression_list, has: {matches: params-target}}]}}
+      - kind: call
+        has:
+          field: function
+          kind: attribute
+          all:
+            - has: {field: object, kind: identifier, regex: '^params$'}
+            - not: {has: {field: attribute, regex: '^(get|keys|values|items)$'}}
+  params-splat: {kind: dictionary_splat, has: {kind: identifier, regex: '^params$'}}
+  path-arg:
+    kind: string
+    inside:
+      kind: argument_list
+      inside: {matches: sink-call}
+    nthChild: {position: 1, ofRule: {not: {kind: comment}}}
+rule:
+  any:
+    # 1. params= at a sink: the bare collector of the nearest function, or reported.
+    - kind: keyword_argument
+      has: {field: name, regex: '^params$'}
+      inside: {kind: argument_list, inside: {matches: sink-call}}
+      not:
+        all:
+          - has: {field: value, kind: identifier, regex: '^params$'}
+          - inside:
+              stopBy: {any: [{kind: function_definition}, {kind: lambda}]}
+              matches: collector-fn
+    # 2. the collector rebound or mutated in its own function.
+    - matches: writes-params
+      inside:
+        stopBy: {any: [{kind: function_definition}, {kind: lambda}]}
+        matches: collector-fn
+    # 2b. a nested function rebinding the collector through `nonlocal` (its own nearest function is not the collector's).
+    - kind: nonlocal_statement
+      has: {matches: params-name}
+      inside: {stopBy: end, matches: collector-fn}
+    # 3. a keyword or a second splat beside **params; a leg splatted anything but **params.
+    - kind: call
+      has:
+        field: arguments
+        all:
+          - has: {matches: params-splat}
+          - has: {any: [{kind: keyword_argument}, {kind: dictionary_splat, not: {matches: params-splat}}]}
+    - kind: call
+      all:
+        - has: {field: function, any: [{kind: attribute, regex: '^self\._\w+$'}, {kind: identifier, regex: '^_\w+$'}]}
+        - has: {field: arguments, has: {kind: dictionary_splat, not: {matches: params-splat}}}
+    # 4. a keyword handed to a leg whose collector would catch it.
+    - kind: call
+      all:
+        - has: {field: function, kind: attribute, regex: '^self\._\w+$', has: {field: attribute, pattern: $LEG}}
+        - has: {field: arguments, has: {kind: keyword_argument}}
+        - inside:
+            kind: class_definition
+            stopBy: end
+            has:
+              field: body
+              has:
+                stopBy: end
+                matches: collector-fn
+                has: {field: name, pattern: $LEG}
+    - kind: call
+      all:
+        - has: {field: function, kind: identifier, regex: '^_\w+$', pattern: $FN}
+        - has: {field: arguments, has: {kind: keyword_argument}}
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              matches: collector-fn
+              has: {field: name, pattern: $FN}
+    # 5. a **params that is not a TypedDict.
+    - kind: dictionary_splat_pattern
+      has: {kind: identifier, regex: '^params$'}
+      not: {inside: {matches: unpack-collector}}
+    # 6. a query in the path.
+    - all:
+        - matches: path-arg
+        - has: {kind: string_start, regex: '^[rR]?[tT]'}
+        - has: {kind: string_content, regex: '\?'}
+    - all:
+        - matches: path-arg
+        - has: {kind: string_content, regex: '\?'}
+        - inside: {kind: argument_list, has: {kind: keyword_argument, has: {field: name, regex: '^params$'}}}

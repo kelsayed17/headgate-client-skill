@@ -67,7 +67,7 @@ source = ["headgate_verify"]
 
 [tool.coverage.report]
 # The measured floor (lines and branches); raise it with coverage, never lower it.
-fail_under = 96
+fail_under = 96.8
 show_missing = true
 skip_covered = true
 

@@ -7,6 +7,22 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Two `headgate-verify` rules: `client-wire-structs-are-frozen-without-gc` (a msgspec wire struct in `models.py`
+  spells `frozen=True, gc=False`, and a subclass overrides neither) and `client-query-params-are-a-typeddict` (a query
+  reaches the wire only as the enclosing function's own `**params: Unpack[...]`, untouched: not rebound or mutated,
+  not merged, not handed to a collector leg as a keyword, not written into the path). The lda example's structs
+  declare `gc=False`.
+- `write-name-fragments` defaults also hold `multileg`, `close_position`, `close_all_positions`,
+  `close_option_position`, `liquidat` and `exercise_option`, so `client-order-writes-name-retry` reads a multi-leg
+  order, a position close, a liquidation and an options exercise as executing writes by default.
+- `client-serde-imported-by-name` has fixtures for `headgate.pydantic` imported whole, as it does for `msgspec`.
+- `client-order-writes-name-retry` skips a method named in `post-reads`: a read by POST (`search_orders`) is named
+  like a read, so a fragment in its name no longer makes it a write.
+- `rule-dirs` in `[tool.headgate-verify]` names directories of a project's own rules (`<id>.yml`, in the shipped
+  rules' format), relative to that `pyproject.toml`. The command runs them beside the shipped rules, with their
+  `note` as the fix, and an allow comment may name their ids. A missing directory, a file that is not valid YAML, a
+  rule ast-grep refuses, a `.yaml` file, or an id a shipped rule, a check, a reserved id or another project rule
+  holds is a usage error (exit `2`), before any package is read.
 - `headgate-snapshot write <docs_paths.json> <url or file>` writes the docs snapshot from the vendor's OpenAPI or
   Swagger document (JSON, YAML, or `JSON.parse('…')` literals in a docs page bundle), and `refresh` reads each
   snapshot's `source` again. It sends a `User-Agent` naming the tool and an `Accept` preferring the OpenAPI media
@@ -29,7 +45,7 @@ All notable changes to this project are recorded here. The format follows
   issue forms and a pull-request template; weekly grouped Dependabot updates for uv and GitHub Actions; CI runs the
   tests with branch coverage (failing below the measured floor) and again at the lowest declared dependencies.
 
-- `headgate-verify`, a static checker for API clients written on headgate 0.8.0 or later: 32 ast-grep rules, six
+- `headgate-verify`, a static checker for API clients written on headgate 0.8.0 or later: 34 ast-grep rules, six
   Python checks over a whole package (one class per host, no provider prefix on models, the package layout, one model
   flavour with its headgate extra, and two review warnings), each finding carrying how to fix it, allow comments with
   a required reason, `--format json`, and a `[tool.headgate-verify]` table for project lists. A path holding no client
