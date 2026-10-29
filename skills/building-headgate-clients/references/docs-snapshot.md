@@ -39,8 +39,9 @@ Both worked examples carry one: [lda](../../../examples/msgspec/lda/docs_paths.j
 - Each endpoint's **operation details**, what the spec says of it, each `""` when it says nothing: `operation_id`
   (the `operationId`), `summary` (whitespace collapsed), `request_schema` (the request body's schema name),
   `response_schema` (the first success response's schema name) and `response_shape` (`array` when a success answers
-  a JSON array, `object` for an object, else `""`). `headgate-snapshot` writes them (below). A snapshot scraped
-  from docs pages has none, and may leave the five keys out.
+  a JSON array, `object` for an object, else `""`). `headgate-snapshot` writes them (below), and the name check names
+  each method from them ([naming.md](naming.md#names-from-the-spec)). A snapshot scraped from docs pages has none,
+  and may leave the five keys out: its methods are named from their paths.
 
 No other key is allowed. `headgate_verify.snapshot.load_snapshot` validates the file, and `headgate-verify` reports
 a snapshot that breaks the schema.
