@@ -224,7 +224,7 @@ def _arms(value: SgNode) -> list[SgNode] | None:
     """Return the arms of a base URL: the node itself, or the two outer arms of ``A if cond else B``, else None."""
     if value.kind() != "conditional_expression":
         return [value]
-    parts = value.named_children()
+    parts = [part for part in value.named_children() if part.kind() != "comment"]
     return [parts[0], parts[2]] if len(parts) == _CONDITIONAL_PARTS else None
 
 

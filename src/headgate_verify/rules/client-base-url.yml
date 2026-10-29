@@ -32,5 +32,7 @@ rule:
           not:
             has:
               all:
-                - any: [{nthChild: 1}, {nthChild: 3}]
-                - not: {any: [{kind: identifier}, {kind: attribute}]}
+                - any:
+                    - precedes: {regex: "^if$", stopBy: end}
+                    - follows: {regex: "^else$", stopBy: end}
+                - not: {any: [{kind: identifier}, {kind: attribute}, {kind: comment}]}
