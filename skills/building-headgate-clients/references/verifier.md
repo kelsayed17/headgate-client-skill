@@ -48,7 +48,7 @@ write-name-fragments = ["order", "orders", "transfer", "withdraw", "payment"]
 | `browser-user-agent-packages` | `[]` | `client-browser-user-agent-only-where-allowed` |
 | `filler-words` | `["api", "global", "locale", "market", "markets", "us"]` | `check_names`, in the naming test |
 | `post-reads` | `[]` | `check_names`, in the naming test |
-| `write-name-fragments` | `["order", "orders", "payment", "transfer", "withdraw"]` | `client-order-writes-name-retry` |
+| `write-name-fragments` | `["close_all_positions", "close_option_position", "close_position", "exercise_option", "liquidat", "multileg", "order", "orders", "payment", "transfer", "withdraw"]` | `client-order-writes-name-retry` |
 
 `one-flavour` reads a different file: the `pyproject.toml` nearest the checked **package**, for the headgate extra
 its flavour needs.

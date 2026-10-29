@@ -32,7 +32,21 @@ class Config:
     """Words ignored when comparing names."""
     post_reads: frozenset[str] = frozenset()
     """Method names that read by POST."""
-    write_name_fragments: frozenset[str] = frozenset({"order", "orders", "transfer", "withdraw", "payment"})
+    write_name_fragments: frozenset[str] = frozenset(
+        {
+            "order",
+            "orders",
+            "transfer",
+            "withdraw",
+            "payment",
+            "multileg",
+            "close_position",
+            "close_all_positions",
+            "close_option_position",
+            "liquidat",
+            "exercise_option",
+        }
+    )
     """Name fragments that mark a method as a write."""
 
 

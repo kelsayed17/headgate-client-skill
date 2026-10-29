@@ -8,7 +8,8 @@
 # Reported: a call `self.post(...)`, `self.put(...)`, `self.patch(...)` or `self.delete(...)` (the callee
 # parenthesised or not) with no `retry=` keyword, anywhere inside a def (sync or async, at any nesting, through nested
 # defs and lambdas) whose name contains one of the project's write-name fragments (`Config.write_name_fragments`,
-# `[tool.headgate-verify] write-name-fragments`; by default order, orders, transfer, withdraw, payment). A def whose
+# `[tool.headgate-verify] write-name-fragments`; by default order, orders, transfer, withdraw, payment, multileg,
+# close_position, close_all_positions, close_option_position, liquidat, exercise_option). A def whose
 # name STARTS with `cancel_` or `preview_`, or is exactly `cancel` or `preview`, and does not contain `replace`, is not
 # executing: a preview sends nothing that executes, and a re-sent cancel is the one write you want to land. A name
 # that only contains the word (`place_one_cancels_other_order`, `place_order_after_preview`) or a cancel-and-replace
