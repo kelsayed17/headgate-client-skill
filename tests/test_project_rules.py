@@ -173,3 +173,16 @@ def test_the_command_reads_rule_dirs(
 def test_the_default_config_has_no_rule_dirs() -> None:
     """With no ``rule-dirs``, only the shipped rules run."""
     assert Config().rule_dirs == frozenset()
+
+
+def test_a_project_rule_scoped_by_packages_runs_only_there(tmp_path: Path) -> None:
+    """``packages:`` in a project rule limits it to the named packages of a project holding several."""
+    _project(tmp_path)
+    write(tmp_path, "rules/acme-no-forbidden.yml", _RULE.format(rule_id="acme-no-forbidden") + "packages: [acme]\n")
+    write(tmp_path, "clients/other/client.py", _CLIENT)
+    found = [
+        finding
+        for finding in verify([tmp_path / "clients"], load_config(tmp_path))
+        if finding.rule == "acme-no-forbidden"
+    ]
+    assert [finding.path.parent.name for finding in found] == ["acme"]

@@ -7,6 +7,9 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- A project rule (and any rule file) may carry `packages: [name, …]`: it runs only in the packages whose directory is
+  named, rather than in every client package. The list must be non-empty; a rule with both `packages` and
+  `skip-packages-in` runs where both allow it.
 - `check_names` takes a method's call-shape prefix from its body: `walk_` for `self.paginate(...)`, `stream_` for
   `self.stream(...)` and `fetch_` for a verb call with `expect=as_bytes`, through a one-level delegate too. `get_`
   stays valid for every shape, and a `get_` and a `walk_` may read one path (a single page beside the whole walk), so a
