@@ -9,13 +9,13 @@ Each rule names the verifier rule that checks it, where one does; [verifier.md](
 
 ## Project setup
 
-- Python 3.14 or later, and headgate 0.7.0 or later with the extra of your flavour, in the project's own
+- Python 3.14 or later, and headgate 0.8.0 or later with the extra of your flavour, in the project's own
   `pyproject.toml` (the one nearest the package). `one-flavour` checks it:
 
   ```toml
   [project]
   requires-python = ">=3.14"
-  dependencies = ["headgate[msgspec]>=0.7.0"]     # or headgate[pydantic]
+  dependencies = ["headgate[msgspec]>=0.8.0"]     # or headgate[pydantic]
 
   [dependency-groups]
   dev = ["headgate-verify", "pytest", "anyio", "syrupy"]
@@ -182,8 +182,10 @@ def get_filings(self, **params: Unpack[FilingsParams]) -> Paginated[Page[Filing]
   that hits the budget raises `PageLimitError`, so a caller never mistakes a cut-short walk for the whole result.
 - A walk of POSTs (headgate 0.8.0) passes its body in its first request, the walk's one positional argument:
   `self.paginate(PageRequest("v1/search", body=query, write=SEARCH_QUERY), expect=..., pages=..., limit=...)`, the
-  path a string, the body the request parameter, the writer the module's `encoder(...)`, and nothing else in the
-  `PageRequest`. Beside one, `paginate` takes no `params=` and no `idempotency_key=`: headgate refuses both.
+  path a string, the body the request parameter, the writer the module's `encoder(...)` (required: without one the
+  body goes as JSON), and nothing else in the `PageRequest` but the query, forwarded as `params=params`. Beside one,
+  `paginate` takes no `params=` and no `idempotency_key=` (nor an `Idempotency-Key` in `headers=`): headgate refuses
+  each.
 - `pagination.py` holds the pagers, the budget and any helper that reads a page (`items=`, `next=`), never a page loop
   (`client-no-hand-rolled-page-loop`). Its docstring says how the API pages and why the budget is what it is (pages
   times the pace is a duration: say it).

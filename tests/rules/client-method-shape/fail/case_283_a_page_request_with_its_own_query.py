@@ -1,4 +1,5 @@
-# A walk of POSTs whose first request carries a query as well: `body=` and `write=` and nothing else.
+# A walk of POSTs whose first request carries a query that is not a request parameter: `params=` there forwards the
+# method's own `**params` collector, nothing else.
 # Readers moved to module level (R3); `limit=` is required here.
 X_PAGE = decoder(XPage)
 

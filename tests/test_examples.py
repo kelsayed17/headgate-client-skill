@@ -201,7 +201,7 @@ def copy_example(tmp_path: Path, example: Example, *edits: Edit) -> Path:
     package = tmp_path / example.path.name
     shutil.copytree(example.path, package, ignore=shutil.ignore_patterns("__pycache__"))
     (tmp_path / "pyproject.toml").write_text(
-        f'[project]\nname = "example-copy"\nversion = "0"\ndependencies = ["headgate[{example.flavour}]>=0.7.0"]\n',
+        f'[project]\nname = "example-copy"\nversion = "0"\ndependencies = ["headgate[{example.flavour}]>=0.8.0"]\n',
         encoding="utf-8",
     )
     for edit in edits:

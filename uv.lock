@@ -149,16 +149,16 @@ wheels = [
 
 [[package]]
 name = "headgate"
-version = "0.7.0"
+version = "0.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "hishel" },
     { name = "httpx2", extra = ["http2"] },
     { name = "typing-extensions", marker = "python_full_version < '3.15'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/54/e0/56caf1c914e82b9bd8af22b1160a90b348f0385b1f4b58410cafc17b4130/headgate-0.7.0.tar.gz", hash = "sha256:1cf8eac0d16f4a86ce9affced33389b3ba711e260f1a41010310d381e6dd3073", size = 501662, upload-time = "2026-10-27T03:10:53.915Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/35/04/2a126ffbeceb29051c921643b0414b48eab8a1224a5cd8f0f114013182bc/headgate-0.8.0.tar.gz", hash = "sha256:e28f4c19e0b2e05e86cb24f0c8410e75847018cd3d64b73194a4e286dff3f86c", size = 513054, upload-time = "2026-10-27T22:37:27.908Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7f/8f/c2289f9744872ff8afce327109fb497a811eb8d88f233a74b01b0090f155/headgate-0.7.0-py3-none-any.whl", hash = "sha256:c353bbe02df959751ee867cb115ab32234732e7c9ef2e7012c008c32c7e820df", size = 219019, upload-time = "2026-10-27T03:10:52.468Z" },
+    { url = "https://files.pythonhosted.org/packages/fc/5e/b5a87c48817c63b6e7b6cde1593b5b74c24663f755742b73622cb719e7ba/headgate-0.8.0-py3-none-any.whl", hash = "sha256:d10a0bb38ae6d2835811a4df5a6046118d4a700ad8225fc3fb95a892aae7172b", size = 220858, upload-time = "2026-10-27T22:37:25.082Z" },
 ]
 
 [package.optional-dependencies]
@@ -202,7 +202,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "anyio", specifier = ">=4.15" },
-    { name = "headgate", extras = ["msgspec", "pydantic"], specifier = ">=0.7.0" },
+    { name = "headgate", extras = ["msgspec", "pydantic"], specifier = ">=0.8.0" },
     { name = "pytest", specifier = ">=9.1" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "ruff" },
