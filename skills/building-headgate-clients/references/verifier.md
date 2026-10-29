@@ -110,6 +110,7 @@ found, and the line here is the check's summary.
 | `client-paths-no-format-on-path-name` | error | a path constant is rendered with .format(), which interpolates verbatim, past the verb's escaping |
 | `client-paths-no-template-construction` | error | a Template is built by hand (or Template is imported under an alias); write a t-string literal instead |
 | `client-pydantic-models-are-data` | error | a pydantic wire model carries fields and model_config, not methods, properties or validators |
+| `client-query-params-are-a-typeddict` | error | a query parameter reaches the wire from something other than the method's own `**params` TypedDict |
 | `client-reads-no-environment` | error | a client package reads no environment variable and loads no .env; credentials are constructor arguments |
 | `client-serde-imported-by-name` | error | a seam module is bound as a module; import the names you use from headgate / headgate.msgspec / headgate.pydantic |
 | `client-strings-carry-no-encoded-characters` | error | a string literal spells every character as itself; no \x, \u, \U, \N or octal escape |
@@ -117,6 +118,7 @@ found, and the line here is the check's summary.
 | `client-url-suffix-means-absolute` | error | a RELATIVE path is named with a _URL suffix; name it _PATH |
 | `client-user-agent-has-no-default` | error | a client's user_agent has no default; the code that builds the client passes it |
 | `client-wire-structs-are-data` | error | a msgspec wire struct carries fields, not computed members |
+| `client-wire-structs-are-frozen-without-gc` | error | a msgspec wire struct declares frozen=True, gc=False, and a subclass never overrides either |
 | `model-has-no-provider-prefix` | error | a model's name does not repeat the provider, which the module path already says. |
 | `one-class-per-host` | error | each host the package calls has its own client class, and each class calls only its host. |
 | `one-flavour` | error | a client package uses one model flavour, and its project declares that flavour's headgate extra. |
@@ -163,6 +165,7 @@ prints it under the finding; `--format json` gives it as `fix`.
 | `client-paths-no-format-on-path-name` | Make the constant a module-level t-string PREFIX and put the holes in a t-string at the call site, where headgate escapes each one. |
 | `client-paths-no-template-construction` | headgate's path renderer splices a nested Template verbatim; Template(some_str) launders the value past its escaping. Import it as `Template`. |
 | `client-pydantic-models-are-data` | Move the derivation or the check to the code that consumes the model, so the model stays the wire as it arrived and headgate's strict decode stays the one validation. |
+| `client-query-params-are-a-typeddict` | Every query key is a field of the method's `**params: Unpack[<Method>Params]` TypedDict, forwarded untouched as `params=params`. A path segment stays a named argument in the t-string; a body stays a model behind a writer. Move the named argument into the TypedDict (`Required[...]` when the API requires it) and let the caller pass it. |
 | `client-reads-no-environment` | Take the value as a constructor argument and let the code that builds the client read its settings. |
 | `client-serde-imported-by-name` | `from headgate import Expect, as_bytes` and `from headgate.msgspec import decoder, to_builtins` (or `headgate.pydantic`), so a reader sees the surface at the top of the file. |
 | `client-strings-carry-no-encoded-characters` | The user-agent, contact and header rules read a literal's source text, so an escaped character would hide a value from them. Write the character itself. |
@@ -170,6 +173,7 @@ prints it under the finding; `--format json` gives it as `fix`.
 | `client-url-suffix-means-absolute` | `*_URL` is an absolute URL (it replaces base_url); a path joined against base_url is `*_PATH`. |
 | `client-user-agent-has-no-default` | The User-Agent is deployment configuration. Make the parameter required and pass it where the client is built. |
 | `client-wire-structs-are-data` | Move the derivation to the code that consumes the struct, so the struct stays the wire as it arrived. |
+| `client-wire-structs-are-frozen-without-gc` | Start the struct's keywords with `frozen=True, gc=False`, then `kw_only`, `omit_defaults`, `forbid_unknown_fields`, `rename` or `array_like` as needed. A subclass of a struct inherits both; never pass `frozen=False` or `gc=True`. |
 | `model-has-no-provider-prefix` | Drop the provider name from the class name: `LdaFiling` in package `lda` is `Filing`. |
 | `one-class-per-host` | Give each host its own class, subclassing only AsyncBaseClient and passing `base_url=` a module-level name of its module; move a call to another host into that host's class. |
 | `one-flavour` | Use one model flavour (msgspec or pydantic) across the package, and declare `headgate[<flavour>]` in the nearest pyproject.toml. |

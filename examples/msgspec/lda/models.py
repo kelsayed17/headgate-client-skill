@@ -33,7 +33,7 @@ import msgspec
 # Pages
 
 
-class Page[T](msgspec.Struct, frozen=True):
+class Page[T](msgspec.Struct, frozen=True, gc=False):
     """One page of a list endpoint: up to ``page_size`` rows (25 at most), and the absolute URLs of its neighbours.
 
     ``next`` is ``None`` on the last page, ``previous`` on the first. ``count`` is the whole result's size.
@@ -48,7 +48,7 @@ class Page[T](msgspec.Struct, frozen=True):
 # Registrants, clients and lobbyists
 
 
-class Registrant(msgspec.Struct, frozen=True):
+class Registrant(msgspec.Struct, frozen=True, gc=False):
     """A registrant: a lobbying firm, or an organisation that lobbies for itself. Also nested in other records."""
 
     id: int
@@ -73,7 +73,7 @@ class Registrant(msgspec.Struct, frozen=True):
     dt_updated: dt.datetime | None
 
 
-class FilingClient(msgspec.Struct, frozen=True):
+class FilingClient(msgspec.Struct, frozen=True, gc=False):
     """A client as a filing names it: the organisation the registrant lobbies for, without its registrant."""
 
     id: int
@@ -100,7 +100,7 @@ class Client(FilingClient, frozen=True):
     registrant: Registrant
 
 
-class Lobbyist(msgspec.Struct, frozen=True):
+class Lobbyist(msgspec.Struct, frozen=True, gc=False):
     """A lobbyist as a filing or a contribution report names one, without the registrant."""
 
     id: int
@@ -123,14 +123,14 @@ class LobbyistWithRegistrant(Lobbyist, frozen=True):
 # Filings (LD-1 registrations and LD-2 reports)
 
 
-class GovernmentEntity(msgspec.Struct, frozen=True):
+class GovernmentEntity(msgspec.Struct, frozen=True, gc=False):
     """A House, Senate or agency body: in a lobbying activity, and as a row of the government entities constants."""
 
     id: int
     name: str
 
 
-class ActivityLobbyist(msgspec.Struct, frozen=True):
+class ActivityLobbyist(msgspec.Struct, frozen=True, gc=False):
     """A lobbyist on one lobbying activity, with the covered government position they disclosed, if any."""
 
     lobbyist: Lobbyist
@@ -138,7 +138,7 @@ class ActivityLobbyist(msgspec.Struct, frozen=True):
     new: bool | None
 
 
-class LobbyingActivity(msgspec.Struct, frozen=True):
+class LobbyingActivity(msgspec.Struct, frozen=True, gc=False):
     """One issue area of a filing. On filings posted before 2021-02-14 the entities are the whole filing's (docs)."""
 
     general_issue_code: str
@@ -149,7 +149,7 @@ class LobbyingActivity(msgspec.Struct, frozen=True):
     government_entities: list[GovernmentEntity]
 
 
-class ConvictionDisclosure(msgspec.Struct, frozen=True):
+class ConvictionDisclosure(msgspec.Struct, frozen=True, gc=False):
     """A lobbyist's disclosed conviction."""
 
     lobbyist: Lobbyist
@@ -157,7 +157,7 @@ class ConvictionDisclosure(msgspec.Struct, frozen=True):
     description: str | None
 
 
-class ForeignEntity(msgspec.Struct, frozen=True):
+class ForeignEntity(msgspec.Struct, frozen=True, gc=False):
     """A foreign entity with an interest in the client."""
 
     name: str
@@ -176,7 +176,7 @@ class ForeignEntity(msgspec.Struct, frozen=True):
     ppb_country_display: str | None
 
 
-class AffiliatedOrganization(msgspec.Struct, frozen=True):
+class AffiliatedOrganization(msgspec.Struct, frozen=True, gc=False):
     """An organisation affiliated with the client."""
 
     name: str
@@ -198,7 +198,7 @@ class AffiliatedOrganization(msgspec.Struct, frozen=True):
     ppb_country_display: str | None
 
 
-class Filing(msgspec.Struct, frozen=True):
+class Filing(msgspec.Struct, frozen=True, gc=False):
     """One LD-1 registration or LD-2 report, or an amendment or termination of one.
 
     ``income`` (a firm lobbying for a client) or ``expenses`` (an organisation lobbying for itself) is the period's
@@ -241,7 +241,7 @@ class Filing(msgspec.Struct, frozen=True):
 # Contribution reports (LD-203)
 
 
-class ContributionItem(msgspec.Struct, frozen=True):
+class ContributionItem(msgspec.Struct, frozen=True, gc=False):
     """One reported contribution."""
 
     contribution_type: str
@@ -253,7 +253,7 @@ class ContributionItem(msgspec.Struct, frozen=True):
     date: dt.date | None
 
 
-class ContributionReport(msgspec.Struct, frozen=True):
+class ContributionReport(msgspec.Struct, frozen=True, gc=False):
     """One LD-203 report: the contributions a registrant or one of its lobbyists reported for a half year.
 
     ``lobbyist`` names the lobbyist on a lobbyist's report (both recorded reports were one); the spec lets it be
@@ -292,7 +292,7 @@ class ContributionReport(msgspec.Struct, frozen=True):
 # Constants
 
 
-class Constant(msgspec.Struct, frozen=True):
+class Constant(msgspec.Struct, frozen=True, gc=False):
     """A ``{value, name}`` constant: a filing type, issue code, country, state, prefix, suffix or item type."""
 
     value: str

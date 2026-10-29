@@ -134,6 +134,9 @@ ending `_URL` holds an absolute URL, a relative one ends `_PATH` (`client-url-su
   writer: `return await self.post("v2/orders", body=NEW_ORDER(order), expect=ORDER, retry=ORDER_RETRY)`.
 - **Path parameters are positional arguments** interpolated into a t-string. Query parameters arrive as
   `**params: Unpack[<Endpoint>Params]` and are forwarded as `params=params`; never a `params` mapping argument.
+  The collector reaches the wire untouched, in every module and through every leg: not rebound or mutated, not
+  merged with a constant, no keyword handed beside it to a leg whose own collector would catch it, and no `?` query
+  written into the path (`client-query-params-are-a-typeddict`).
 - **A path with holes is a t-string**; a path with none is a plain string literal. Never an f-string, `.format()`, a
   hand-built `Template`, `quote()` on a hole, string concatenation, or a variable holding a built path
   (`client-paths-no-f-string`, `client-paths-no-format-on-path-name`, `client-paths-no-template-construction`,
@@ -182,8 +185,12 @@ def get_filings(self, **params: Unpack[FilingsParams]) -> Paginated[Page[Filing]
 
 ## Models
 
-- **msgspec:** `class Filing(msgspec.Struct, frozen=True)`, fields only: no methods, properties or computed members
-  (`client-wire-structs-are-data`). Decoded with `headgate.msgspec.decoder`.
+- **msgspec:** `class Filing(msgspec.Struct, frozen=True, gc=False)`, fields only: no methods, properties or computed
+  members (`client-wire-structs-are-data`). `frozen=True, gc=False` come first in the keywords: a decoded body is a
+  tree, so no instance sits in a reference cycle and the garbage collector need not track it. A subclass of a struct
+  inherits both and never overrides either (`client-wire-structs-are-frozen-without-gc`, which reads `models.py`). A
+  struct built in code that can hold any object (a callback bound to the client) is no wire model: keep it out of
+  `models.py` and leave it tracked, or the cycle through it leaks the client. Decoded with `headgate.msgspec.decoder`.
 - **pydantic:** a `BaseModel` with `model_config = ConfigDict(frozen=True)`, fields only: no methods, properties or
   validators (`client-pydantic-models-are-data`). Decoded with `headgate.pydantic.decoder` (strict by default).
 - **Field names are the API's own**; msgspec's `rename=` or a pydantic alias where Python cannot spell one. Types say
