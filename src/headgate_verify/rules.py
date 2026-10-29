@@ -8,8 +8,10 @@ A rule file keeps ast-grep's own keys, so it reads like any ast-grep rule: ``id`
 ``constraints``, ``utils`` and ``transform``, plus the informational ``language`` (``python`` only) and ``note``, which
 becomes the rule's ``fix``. The last four of ast-grep's keys go to ast-grep-py unchanged.
 
-One key is this tool's own: ``skip-packages-in: <field>`` names a ``Config`` field holding package names (the name of
-the directory that holds ``client.py``); the rule does not run in a package so named.
+Two keys are this tool's own. ``skip-packages-in: <field>`` names a ``Config`` field holding package names (the name
+of the directory that holds ``client.py``); the rule does not run in a package so named. ``packages: [<name>, …]``
+lists package names, and the rule runs only in a package so named: a project rule for one provider's quirk is scoped to
+that provider rather than run, silently idle, in every other package. A package must pass both when a rule has both.
 
 A rule that needs a project list reads a ``Config`` field through a ``{{config.<field>}}`` placeholder, which must sit
 inside a single-quoted YAML string (in practice a ``regex``). Before the YAML is parsed, the placeholder is replaced by
@@ -49,7 +51,7 @@ _SEVERITIES: dict[str, Severity] = {"error": "error", "warning": "warning"}
 _REQUIRED_KEYS = frozenset({"id", "message", "severity", "rule"})
 _SG_KEYS = ("rule", "constraints", "utils", "transform")
 """The keys handed to ast-grep-py as the rule's config, when present."""
-_KNOWN_KEYS = _REQUIRED_KEYS | {*_SG_KEYS, "language", "note", "files", "skip-packages-in"}
+_KNOWN_KEYS = _REQUIRED_KEYS | {*_SG_KEYS, "language", "note", "files", "packages", "skip-packages-in"}
 _PLACEHOLDER = re.compile(r"\{\{config\.(\w+)\}\}")
 _MATCH_NOTHING = r"[^\s\S]"
 _CONFIG_FIELDS = frozenset(config_field.name for config_field in fields(Config))
@@ -67,6 +69,8 @@ class YamlRule(Rule):
     """The YAML text, re-read with each run's ``Config`` when it holds a ``{{config.<field>}}`` placeholder."""
     skip_packages_in: str | None = None
     """The ``Config`` field naming the packages this rule does not run in."""
+    packages: frozenset[str] | None = None
+    """The package names this rule runs in, or None for every package."""
 
     @property
     def config_fields(self) -> tuple[str, ...]:
@@ -138,6 +142,11 @@ def rule_from_yaml(text: str, rule_id: str) -> YamlRule:
     globs = data.get("files", _DEFAULT_FILES)
     if not isinstance(globs, list | tuple) or not all(isinstance(glob, str) for glob in globs):
         raise _invalid(rule_id, "files must be a list of globs")
+    packages = data.get("packages", [])
+    if "packages" in data and (
+        not isinstance(packages, list) or not packages or not all(isinstance(name, str) and name for name in packages)
+    ):
+        raise _invalid(rule_id, "packages must be a non-empty list of package names")
     skip_packages_in = data.get("skip-packages-in")
     if skip_packages_in is not None and skip_packages_in not in _CONFIG_FIELDS:
         raise _invalid(rule_id, f"skip-packages-in names no Config field: {skip_packages_in!r}")
@@ -150,6 +159,7 @@ def rule_from_yaml(text: str, rule_id: str) -> YamlRule:
         config=_sg_config(data),
         source=text,
         skip_packages_in=skip_packages_in,
+        packages=frozenset(packages) if "packages" in data else None,
     )
 
 
@@ -206,6 +216,8 @@ def run_rules(pkg: Package, modules: Modules, rules: Sequence[YamlRule], config:
     """Return one finding per match of each rule in each of the parsed ``modules`` of ``pkg`` its globs name."""
     findings: list[Finding] = []
     for rule in rules:
+        if rule.packages is not None and pkg.root.name not in rule.packages:
+            continue
         if rule.skip_packages_in is not None and pkg.root.name in getattr(config, rule.skip_packages_in):
             continue
         sg_config = rule.sg_config(config)
