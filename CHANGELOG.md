@@ -7,6 +7,24 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- `headgate-snapshot write <docs_paths.json> <url or file>` writes the docs snapshot from the vendor's OpenAPI or
+  Swagger document (JSON, YAML, or `JSON.parse('…')` literals in a docs page bundle), and `refresh` reads each
+  snapshot's `source` again. It sends a `User-Agent` naming the tool and an `Accept` preferring the OpenAPI media
+  types, and dates the snapshot by the response's `Date` header.
+- `check_names` names a method from the vendor's spec where the snapshot carries its `operationId`: the id's words
+  the endpoint states (its path, the client's return models, the spec's schema names), the verb as the first word the
+  endpoint does not state, a write's verb from the summary when the id's only repeats the HTTP verb, a namespace the
+  spec's ids share stripped, a gate rejecting code paths, ids that write out the path and ids that spell a path hole,
+  and a read's number from its path or a JSON-array answer. A colliding spec name keeps every id word, then takes the
+  path's name. A write the spec names is held to that name. No word list is kept. `spec_name` and `spec_namespace`
+  are public, for a caller with its own call-shape prefixes.
+- `review_names` and the `headgate-names` command list the names no rule produces well (a rejected or colliding id, a
+  write the spec does not name, a wordless path, two methods on one endpoint, a URL argument), for the skill's review
+  step to name from the docs as overrides with a reason. It never fails.
+- A snapshot endpoint carries the spec's operation details beside `verb` and `path`: `operation_id`, `summary`,
+  `request_schema`, `response_schema` and `response_shape` (`array`, `object` or `""`). They are optional, so a
+  snapshot scraped from docs pages still loads.
+
 - Repository setup to match headgate's: a security policy, contributing guide and code of conduct; bug and feature
   issue forms and a pull-request template; weekly grouped Dependabot updates for uv and GitHub Actions; CI runs the
   tests with branch coverage (failing below the measured floor) and again at the lowest declared dependencies.

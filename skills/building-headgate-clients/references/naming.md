@@ -1,11 +1,74 @@
 # Method names
 
-A read is named after its path, so the method can be found from the URL and checked against the docs. The algorithm
-and the comparison ship in `headgate_verify.naming`; each client package runs them in its `test_method_names.py`.
-`headgate-verify` does not run that test: it only checks that the file and `docs_paths.json` exist. A method named
-after a docs heading passes the verifier and fails the naming test, so the naming test is part of the gate.
+A method is named in the vendor's own words where its official spec gives a usable `operationId`, and after its path
+otherwise, so it can be found from the docs or the URL and checked against them. The rules and the comparison ship in
+`headgate_verify.naming`; each client package runs them in its `test_method_names.py`. `headgate-verify` does not run
+that test: it only checks that the file and `docs_paths.json` exist. A method named after a docs heading passes the
+verifier and fails the naming test, so the naming test is part of the gate.
 
-## The algorithm
+Each method's expected name comes from the first of these that gives one:
+
+1. an **override** (below), reviewed in the diff with its reason;
+2. the **spec**: the snapshot carries the endpoint's `operation_id` and the id passes the gate
+   ([names from the spec](#names-from-the-spec));
+3. the **path**, for a read ([names from the path](#names-from-the-path)). A write the spec does not name is
+   unchecked.
+
+What none of them names well is listed for review ([the review step](#the-review-step-names-no-rule-produces-well)),
+where you, or the agent building the client, propose a name and record it as an override.
+
+## Names from the spec
+
+When `docs_paths.json` is written from an official spec (`headgate-snapshot`, see
+[docs-snapshot.md](docs-snapshot.md)), each endpoint carries its `operationId`, summary and schema names, and the
+method is named from them. No word list is kept: every rule reads what the endpoint itself says.
+
+- **What the endpoint states.** A word is *stated* when the path holds it (as a word, or as a piece of four letters or
+  more of a glued word: `government` in `governmententities`), or a name of the client's return models does
+  (`AccountSummary` in `-> AccountSummary`). Words compare up to number with `inflect.compare` (`order` is
+  `orders`). The spec's schema names count as stated for keeping a noun, but not for finding the verb, since a
+  generated schema name often repeats the id's verb (`CreateOrderRequest`).
+- **The verb is the first word the endpoint does not state.** `listClients` on `/clients/` is `list` + `clients`;
+  `StockLatestBars` on `/stocks/bars/latest` states every word, so it has no verb.
+- **A read** is `get_` and the id's words without its verb. The call-shape prefix is the caller's: a project that
+  names walks `walk_` or raw bodies `fetch_` passes that prefix to `spec_name`, and the id's own read verb (`list`,
+  `retrieve`, `fetch`) gives way to it.
+- **A write** keeps the id's verb. When that verb only repeats the HTTP verb (`postOrder`), it takes the summary's
+  first word instead ("Create an Order" gives `create_order`); a summary that starts with a stated word is a noun
+  phrase, so the id's verb stays (`post_order`). An id that states every word names its verb in the path's last
+  literal segment: `leaveCall` on `/calls/{id}/leave` is `leave_call`.
+- **The namespace.** The leading words that 80% of each HTTP verb's ids share, in a spec of five ids or more over more
+  than one verb, name the spec, not the operation, and are stripped from the ids and the summaries:
+  `RetailBrokerageApi_GetAccounts` is `get_accounts`. A verb such as `get` heads only the reads, so it is never one.
+- **The gate** rejects an id that is a code path (it holds a `.`: `PublicApi.TickerController.info`), the path
+  written out (`get_stocks_v1_short-interest`, or FastAPI's default `<function>_<path>_<verb>`), or one that spells a
+  path hole of several words, or an `{id}` hole, as words (`getOrdersOrderId` on `/orders/{order_id}`). A hole after
+  a word the endpoint does not state reads as a phrase and passes (`getOrderByOrderId`).
+- **The stated-word filter** drops each id word the endpoint does not state: alpaca's `GetOpenPosition` is
+  `get_position`. An id that states no word gives no name.
+- **Singular or plural.** A read's last noun takes the number of its path's last word when that word is the same noun
+  (`getMarket` on `/markets` is `get_markets`), else is plural when the spec answers a JSON array. An object answer
+  says nothing (a list usually arrives in an envelope), and inflect never singularises (it gives `censu` for
+  `census`).
+- **Word order.** The vendor's order stays: an id is a phrase, a path is a hierarchy.
+- **Collisions.** A spec name another endpoint's name also takes keeps every id word (`getAllPositions` is
+  `get_all_positions` beside `/positions/{symbol}`'s `get_positions`); one that still collides takes its path's name.
+
+| Spec operation | Name |
+|---|---|
+| `GET /api/v1/clients/` `listClients` | `get_clients` |
+| `GET /api/v1/constants/filing/filingtypes/` `listFilingTypes` | `get_filing_types` |
+| `GET /2010-04-01/Accounts/{sid}/Applications.json` `ListApplication` | `get_applications` |
+| `GET /v2/positions/{symbol}` `GetOpenPosition` | `get_position` |
+| `POST /v2/watchlists` `postWatchlist`, "Create Watchlist" | `create_watchlist` |
+| `DELETE /v2/orders/{order_id}` `deleteOrderByOrderID` | `delete_order` |
+| `POST /2/media/upload` `mediaUpload` | `upload_media` |
+| `GET /api/etfs/{ticker}/info` `PublicApi.EtfController.info` | rejected: the path names it, `get_etfs_info` |
+
+`spec_name(endpoint, prefix=..., write=..., models=..., namespace=...)` and `spec_namespace(endpoints)` are public, so
+a project with its own call shapes can name from the spec the same way.
+
+## Names from the path
 
 A read (a `GET`, or a method listed in `post_reads`) is named `get_` plus the literal words of its path
 (`endpoint_name`):
@@ -47,9 +110,10 @@ differently, and a prefix the docs carry does not change the name. A documented 
 the suffix matches: a client `"quotes"` beside documented `/quotes` and `/v2/quotes` matches `/quotes`, and a client
 `"/"` matches a documented root `GET /`, not every path.
 
-**Writes** keep a verb name (`create_order`, `cancel_order`) and are listed in `exempt_writes`, so the naming rule
-skips them. An API that reads by `POST` (a search endpoint) lists those methods in `post_reads`, and they are named
-like reads.
+**Writes** keep a verb name (`create_order`, `cancel_order`) and are listed in `exempt_writes`, so the path rule
+skips them. A write matching exactly one documented endpoint whose spec names it is held to the spec's name; one the
+spec does not name is unchecked and listed for review. An API that reads by `POST` (a search endpoint) lists those
+methods in `post_reads`, and they are named like reads.
 
 ## The test file
 
@@ -114,11 +178,41 @@ Use a `"VERB path"` key when two documented reads derive the same name and singu
 is stale and fails the test, so the table cannot rot.
 
 Override only for a reason a reader would accept: a name that would read wrong, or a collision. Never to keep a docs
-heading's name.
+heading's name. A spec name is overridden like a path name: by its `"VERB path"`, or by the spec name as the key.
+
+## The review step: names no rule produces well
+
+The check is deterministic and offline, so some names it can only take from the path, or not check at all.
+`review_names` (same arguments as `check_names`) lists them, and `headgate-names` prints the list for a package:
+
+```bash
+uv run headgate-names path/to/provider/tests/test_method_names.py
+```
+
+It runs the test module's top level and reads its `PACKAGE`, and its `OVERRIDES`, `EXEMPT_WRITES`, `POST_READS` and
+`FILLER` when it defines them. Listed, each with why:
+
+- a read named by its path because the spec's `operationId` was rejected by the gate, states no word of the endpoint,
+  or collided;
+- a write the spec does not name, so its name is unchecked;
+- a read whose path has no word;
+- two methods sending one endpoint;
+- a method whose path is an argument (a URL it is given), so its name is unchecked.
+
+The list never fails the test. For each line, read the endpoint's docs. When the name it has says what the endpoint
+does, leave it. When it does not, propose a name in the vendor's words and record it as a `"VERB path"` override with
+a one-line reason; an endpoint an override names leaves the list. The reviewer sees each one in the diff:
+
+```python
+OVERRIDES = {
+    # the spec's id is a code path; the docs title the endpoint "ETF information"
+    "GET /api/etfs/{ticker}/info": "get_etf_info",
+}
+```
 
 ## What the test fails
 
-- a method whose name is not the expected one (it says the expected name);
+- a method whose name is not the expected one (it says the expected name, and the `operationId` it came from);
 - a documented `GET` with no method: the snapshot is the docs, so cover every read;
 - a method whose path the snapshot does not list, or matches more than one documented path;
 - two read paths that still derive one name;

@@ -24,6 +24,7 @@ Do the steps in order. Each produces something the next one needs.
 
 1. **Snapshot the docs.** Find the API's machine-readable surface (`llms.txt`, an OpenAPI document, a spec embedded in
    the docs site, or the docs pages) and save every documented verb and path as `docs_paths.json` beside the client.
+   From an official OpenAPI or Swagger document, `headgate-snapshot write docs_paths.json <spec URL>` writes it.
    Read the API's terms before the first request and record what you measure. See
    [references/docs-snapshot.md](references/docs-snapshot.md).
 2. **Pick the flavour and copy the matching example.** msgspec (`headgate[msgspec]`, `msgspec.Struct` models) or
@@ -41,7 +42,8 @@ Do the steps in order. Each produces something the next one needs.
    any writer and retry policy; pagers and page budgets go in `pagination.py`. Then the class, whose methods are each one statement forwarding
    to a headgate verb or `paginate`. Write the module docstring as you measure: dates, statuses, error bodies, limits,
    terms, and what you did not measure. The full rules are in [references/conventions.md](references/conventions.md),
-   and the method names in [references/naming.md](references/naming.md).
+   and the method names in [references/naming.md](references/naming.md): the spec's `operationId` where the gate
+   passes it, else the path.
 4. **Record fixtures and write the tests.** Record one body per documented read and per documented error from the live
    API, politely and within its terms; trim lists and redact personal data. Test offline through the client's real
    headgate stack: `FakeTransport`, a `TestClock` for a paced client, syrupy snapshots, the request asserted, and a
@@ -55,7 +57,13 @@ Do the steps in order. Each produces something the next one needs.
 
    Fix every error. The rule list, the configuration and the allow-comment form are in
    [references/verifier.md](references/verifier.md).
-6. **Resolve every warning in writing.** A warning (`client-except-needs-review`, `client-cache-with-bearer-auth`)
+6. **Review the names no rule produces well.** `uv run headgate-names path/to/provider/tests/test_method_names.py`
+   lists them: a read named by its path because the spec's `operationId` was rejected or collided, a write the spec
+   does not name, a wordless path, two methods on one endpoint, a method taking its URL as an argument. For each,
+   read the docs; keep a name that says what the endpoint does, else propose one in the vendor's words and record it
+   in `OVERRIDES` keyed `"VERB path"`, with a one-line reason, for the reviewer to judge in the diff. See
+   [references/naming.md](references/naming.md#the-review-step-names-no-rule-produces-well).
+7. **Resolve every warning in writing.** A warning (`client-except-needs-review`, `client-cache-with-bearer-auth`)
    does not fail the run, but a person has to judge it: fix the code, or keep it with an allow comment whose reason
    says why it is right (`# headgate-verify: allow <rule-id> -- <reason>`). Say how each was resolved when you report.
 
@@ -73,8 +81,9 @@ which are warnings a reader judges.
    module-level function or value, never inheritance.
 2. **Never fold several endpoints into one method** because a caller wants them together. One method per endpoint
    keeps each call testable against its docs; combining results is the caller's job.
-3. **Never name a method after a docs heading** (`ticker_overview`). Names come from the path
-   (`get_reference_ticker`), so anyone can find the method from the URL and the naming test can check it.
+3. **Never name a method after a docs heading** (`ticker_overview`). Names come from the spec's `operationId` or
+   the path (`get_reference_ticker`), so anyone can find the method from the docs or the URL and the naming test can
+   check it; a name the rules cannot give is an override with a reason.
 4. **Never return `None` or a raw dict on failure.** Every call declares the responses it expects, and anything else
    raises a typed headgate error; `None` is only a documented answer (a `404` meaning "no such thing") or a write that
    returns nothing. A silent `None` hides an outage as an empty result.

@@ -6,11 +6,14 @@
 The file reads::
 
     {"source": "https://…/openapi.json" | null, "retrieved": "YYYY-MM-DD", "reason": str | null,
-     "endpoints": [{"verb": "GET", "path": "/v1/foo/{id}"}, …]}
+     "endpoints": [{"verb": "GET", "path": "/v1/foo/{id}", "operation_id": "getFoo", "summary": "Get a Foo",
+                    "request_schema": "", "response_schema": "Foo", "response_shape": "object"}, …]}
 
 ``endpoints`` is sorted by ``(path, verb)`` with no repeats, ``reason`` is required when ``source`` is null (the API
-publishes no reference), and no other key is allowed. The schema is validated by hand here: it is four keys, and its
-sort order and the reason-when-null condition would need code beside any schema library anyway, so a runtime
+publishes no reference), and no other key is allowed. An endpoint needs ``verb`` and ``path``; the five operation
+details are what an OpenAPI or Swagger document says of it (``headgate_verify.spec`` writes them), each a string and
+``""`` when absent, and ``response_shape`` is ``array``, ``object`` or ``""``. The schema is validated by hand here:
+its sort order and the reason-when-null condition would need code beside any schema library anyway, so a runtime
 dependency would buy nothing.
 """
 
@@ -28,6 +31,9 @@ _VERB = re.compile(r"^[A-Z]+$")
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _KEYS = frozenset({"source", "retrieved", "reason", "endpoints"})
 _ALL_KEYS = "source, retrieved, reason and endpoints"
+_DETAILS = ("operation_id", "summary", "request_schema", "response_schema", "response_shape")
+_ENDPOINT_KEYS = frozenset({"verb", "path", *_DETAILS})
+_SHAPES = frozenset({"array", "object", ""})
 
 
 class SnapshotError(ValueError):
@@ -36,10 +42,20 @@ class SnapshotError(ValueError):
 
 @dataclass(frozen=True)
 class Endpoint:
-    """One HTTP verb on one path."""
+    """One HTTP verb on one path, with what the API's spec says of it (each ``""`` when it says nothing)."""
 
     verb: str
     path: str
+    operation_id: str = ""
+    """The spec's ``operationId``."""
+    summary: str = ""
+    """The spec's one-line ``summary``, its whitespace collapsed."""
+    request_schema: str = ""
+    """The name of the request body's schema."""
+    response_schema: str = ""
+    """The name of the first success response's schema."""
+    response_shape: str = ""
+    """``array`` when a success answers a JSON array, ``object`` for an object, ``""`` when the spec does not say."""
 
 
 @dataclass(frozen=True)
@@ -53,8 +69,8 @@ class DocsSnapshot:
 
 
 def _endpoint(index: int, item: object) -> Endpoint:
-    if not isinstance(item, dict) or set(item) != {"verb", "path"}:
-        msg = f"endpoints[{index}] must be an object with exactly the keys verb and path"
+    if not isinstance(item, dict) or not {"verb", "path"} <= set(item) <= _ENDPOINT_KEYS:
+        msg = f"endpoints[{index}] must be an object with the keys verb and path, and only {', '.join(_DETAILS)} beside"
         raise SnapshotError(msg)
     verb, route = item["verb"], item["path"]
     if not isinstance(verb, str) or not _VERB.match(verb):
@@ -63,12 +79,22 @@ def _endpoint(index: int, item: object) -> Endpoint:
     if not isinstance(route, str):
         msg = f"endpoints[{index}].path must be a string; got {route!r}"
         raise SnapshotError(msg)
-    return Endpoint(verb, route)
+    details: dict[str, str] = {}
+    for key in _DETAILS:
+        value = item.get(key, "")
+        if not isinstance(value, str):
+            msg = f"endpoints[{index}].{key} must be a string; got {value!r}"
+            raise SnapshotError(msg)
+        details[key] = value
+    if details["response_shape"] not in _SHAPES:
+        msg = f"endpoints[{index}].response_shape must be array, object or empty; got {details['response_shape']!r}"
+        raise SnapshotError(msg)
+    return Endpoint(verb, route, **details)
 
 
 def _endpoints(value: object) -> tuple[Endpoint, ...]:
     if not isinstance(value, list):
-        msg = "endpoints must be a list of {verb, path} objects"
+        msg = "endpoints must be a list of endpoint objects"
         raise SnapshotError(msg)
     endpoints = tuple(_endpoint(index, item) for index, item in enumerate(value))
     keys = [(endpoint.path, endpoint.verb) for endpoint in endpoints]
@@ -125,3 +151,16 @@ def load_snapshot(path: Path) -> DocsSnapshot:
         msg = "the snapshot has source null and no reason; say why the API's reference cannot be saved"
         raise SnapshotError(msg)
     return DocsSnapshot(source, _retrieved(data["retrieved"]), reason, _endpoints(data["endpoints"]))
+
+
+def dump_snapshot(snapshot: DocsSnapshot) -> str:
+    """Return ``snapshot`` as the text of a ``docs_paths.json``, which ``load_snapshot`` reads back unchanged."""
+    data = {
+        "source": snapshot.source,
+        "retrieved": snapshot.retrieved.isoformat(),
+        "reason": snapshot.reason,
+        "endpoints": [
+            {"verb": e.verb, "path": e.path, **{key: getattr(e, key) for key in _DETAILS}} for e in snapshot.endpoints
+        ],
+    }
+    return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
