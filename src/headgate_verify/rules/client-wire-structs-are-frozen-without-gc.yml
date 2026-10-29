@@ -1,0 +1,73 @@
+# A msgspec wire struct is `frozen=True, gc=False`, and a subclass never overrides either.
+#
+# `frozen=True` makes the struct the wire as it arrived: nothing downstream can rewrite a field. `gc=False` is safe for
+# a wire struct because it is built by a strict JSON decode, and decoded JSON is a tree, so no instance can sit in a
+# reference cycle, which is msgspec's one condition for leaving a type untracked. It saves the GC header and keeps
+# every decoded row out of every collection pass. Spelling both keeps the header saying which was meant.
+#
+# Scope: every module of the package (models.py, and the odd struct in a pagination.py or client.py alike).
+#
+# Reported:
+#   * a class one of whose bases is `Struct`, `<module>.Struct` (`msgspec.Struct`) or a subscript of either, generic
+#     ones included (`Generic[T]` beside it, or a PEP 695 `class X[T](...)`), that does not spell the keyword
+#     `frozen=True` AND the keyword `gc=False` literally, in any position. A `**config` splat is not read as either;
+#   * any class, whatever its bases, that passes `frozen=` anything but `True` or `gc=` anything but `False`: the way a
+#     subclass would thaw or re-track what its parent declared.
+#
+# NOT required on a subclass of another struct (`class TradesPage(Page)`, `class X(Envelope[Row])`): msgspec copies
+# `frozen` and `gc` from the parent's config (a bare subclass of a frozen, gc=False struct reports both, and its
+# instances are untracked), so restating them is noise. Only overriding them is reported, by the second bullet.
+#
+# DISCLOSED: a `Struct` imported under another name (`from msgspec import Struct as S`) is not read, as in
+# client-wire-structs-are-data, and a subclass of a struct from outside the package is not read either.
+#
+# CHANGED from the source rule: the scope is every module of the package; the note names the keyword order without a
+# project document to point at.
+id: client-wire-structs-are-frozen-without-gc
+language: python
+severity: error
+message: a msgspec wire struct declares frozen=True, gc=False, and a subclass never overrides either
+note: >-
+  Start the struct's keywords with `frozen=True, gc=False`, then `kw_only`, `omit_defaults`, `forbid_unknown_fields`,
+  `rename` or `array_like` as needed. A subclass of a struct inherits both; never pass `frozen=False` or `gc=True`.
+files:
+  - '*.py'
+utils:
+  struct-base:
+    any:
+      - {kind: identifier, regex: '^Struct$'}
+      - {kind: attribute, has: {field: attribute, regex: '^Struct$'}}
+      - kind: subscript
+        has:
+          field: value
+          any:
+            - {kind: identifier, regex: '^Struct$'}
+            - {kind: attribute, has: {field: attribute, regex: '^Struct$'}}
+  frozen-true:
+    kind: keyword_argument
+    all:
+      - has: {field: name, regex: '^frozen$'}
+      - has: {field: value, kind: 'true'}
+  gc-false:
+    kind: keyword_argument
+    all:
+      - has: {field: name, regex: '^gc$'}
+      - has: {field: value, kind: 'false'}
+  overrides-config:
+    kind: keyword_argument
+    any:
+      - all:
+          - has: {field: name, regex: '^frozen$'}
+          - not: {has: {field: value, kind: 'true'}}
+      - all:
+          - has: {field: name, regex: '^gc$'}
+          - not: {has: {field: value, kind: 'false'}}
+rule:
+  kind: class_definition
+  any:
+    - all:
+        - has: {field: superclasses, has: {matches: struct-base}}
+        - any:
+            - not: {has: {field: superclasses, has: {matches: frozen-true}}}
+            - not: {has: {field: superclasses, has: {matches: gc-false}}}
+    - has: {field: superclasses, has: {matches: overrides-config}}
