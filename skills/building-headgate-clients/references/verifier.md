@@ -40,14 +40,15 @@ exit `2` for the command and a `ConfigError` for `check_names`.
 ```toml
 [tool.headgate-verify]
 browser-user-agent-packages = ["scraped_portal"]   # packages whose host forces a browser User-Agent
-write-name-fragments = ["order", "orders", "transfer", "withdraw", "payment"]
+post-reads = ["search_orders"]                     # reads by POST: named like reads, never held to retry=
+write-name-fragments = ["order", "redeem"]         # REPLACES the defaults (the table below): list every fragment
 ```
 
 | Key | Default | Read by |
 |---|---|---|
 | `browser-user-agent-packages` | `[]` | `client-browser-user-agent-only-where-allowed` |
 | `filler-words` | `["api", "global", "locale", "market", "markets", "us"]` | `check_names`, in the naming test |
-| `post-reads` | `[]` | `check_names`, in the naming test |
+| `post-reads` | `[]` | `client-order-writes-name-retry`, `check_names`, in the naming test |
 | `write-name-fragments` | `["close_all_positions", "close_option_position", "close_position", "exercise_option", "liquidat", "multileg", "order", "orders", "payment", "transfer", "withdraw"]` | `client-order-writes-name-retry` |
 
 `one-flavour` reads a different file: the `pyproject.toml` nearest the checked **package**, for the headgate extra

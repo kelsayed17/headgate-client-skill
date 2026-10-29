@@ -22,6 +22,9 @@
 # also matches `cancel_order`, which the source's list never named, a name starting with `cancel_` joins one starting
 # with `preview_` as not executing (anchored, and never a cancel-and-replace; the source's `preview` was unanchored).
 #
+# A method named in `post-reads` (`Config.post_reads`) is a read by POST, so a fragment in its name
+# (`search_orders`, `estimate_multileg_margin`) does not make it a write.
+#
 # DISCLOSED: a write issued through a helper the executing method calls (`self._submit(...)` whose own name holds no
 # fragment) is not followed; a fragment matches anywhere in a name (`order` in `border_crossings`).
 id: client-order-writes-name-retry
@@ -52,6 +55,9 @@ rule:
     has:
       field: name
       regex: '{{config.write_name_fragments}}'
-      # A cancel or a preview by name: starts with `cancel_`/`preview_` or is exactly `cancel`/`preview`, and is not a
-      # cancel-and-replace.
-      not: {regex: '^(cancel|preview)(_|$)', not: {regex: 'replace'}}
+      all:
+        # A cancel or a preview by name: starts with `cancel_`/`preview_` or is exactly `cancel`/`preview`, and is not
+        # a cancel-and-replace.
+        - not: {regex: '^(cancel|preview)(_|$)', not: {regex: 'replace'}}
+        # A method the project declares a read by POST (`post-reads`): a re-sent read is harmless.
+        - not: {regex: '^(?:{{config.post_reads}})$'}

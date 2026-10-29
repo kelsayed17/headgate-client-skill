@@ -131,7 +131,8 @@ exit `2` for the command and a `ConfigError` for `check_names`.
 ```toml
 [tool.headgate-verify]
 browser-user-agent-packages = ["scraped_portal"]   # packages whose host forces a browser User-Agent
-write-name-fragments = ["order", "orders", "transfer", "withdraw", "payment"]
+post-reads = ["search_orders"]                     # reads by POST: named like reads, never held to retry=
+write-name-fragments = ["order", "redeem"]         # REPLACES the defaults (the table below): list every fragment
 ```
 
 | Key | Default | Read by |

@@ -11,6 +11,8 @@ All notable changes to this project are recorded here. The format follows
   `close_option_position`, `liquidat` and `exercise_option`, so `client-order-writes-name-retry` reads a multi-leg
   order, a position close, a liquidation and an options exercise as executing writes by default.
 - `client-serde-imported-by-name` has fixtures for `headgate.pydantic` imported whole, as it does for `msgspec`.
+- `client-order-writes-name-retry` skips a method named in `post-reads`: a read by POST (`search_orders`) is named
+  like a read, so a fragment in its name no longer makes it a write.
 - `headgate-snapshot write <docs_paths.json> <url or file>` writes the docs snapshot from the vendor's OpenAPI or
   Swagger document (JSON, YAML, or `JSON.parse('…')` literals in a docs page bundle), and `refresh` reads each
   snapshot's `source` again. It sends a `User-Agent` naming the tool and an `Accept` preferring the OpenAPI media
