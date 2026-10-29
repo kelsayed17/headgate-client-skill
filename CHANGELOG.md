@@ -45,7 +45,7 @@ All notable changes to this project are recorded here. The format follows
   issue forms and a pull-request template; weekly grouped Dependabot updates for uv and GitHub Actions; CI runs the
   tests with branch coverage (failing below the measured floor) and again at the lowest declared dependencies.
 
-- `headgate-verify`, a static checker for API clients written on headgate 0.7.0 or later: 34 ast-grep rules, six
+- `headgate-verify`, a static checker for API clients written on headgate 0.8.0 or later: 34 ast-grep rules, six
   Python checks over a whole package (one class per host, no provider prefix on models, the package layout, one model
   flavour with its headgate extra, and two review warnings), each finding carrying how to fix it, allow comments with
   a required reason, `--format json`, and a `[tool.headgate-verify]` table for project lists. A path holding no client
@@ -58,6 +58,13 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- `client-method-shape` checks a walk's first request: a path string, or `PageRequest(<path>, body=<request
+  parameter>, write=<WRITER>)`, its query only as `params=params`, with no `params=` or `idempotency_key=` beside a
+  `PageRequest`. A computed path, a second positional argument or a `PageRequest` built any other way no longer
+  passes.
+- `client-method-shape` passes a stream, `async with self.stream(...) as <s>:` holding only
+  `async for <c> in <s>.aiter_bytes(): yield <c>`, in an async def, which it used to report; the stream's keywords
+  take the forward checks, with no body option, `expect=` or `cache_ttl=`.
 - `one-class-per-host` no longer reports a comment inside a client class's bases list as a second base.
 - A `pyproject.toml` that is not UTF-8, or cannot be read, is a usage error (exit 2) naming the file, not a traceback;
   `check_names` raises `ConfigError` for it.

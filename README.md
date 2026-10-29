@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/kelsayed17/headgate-client-skill/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kelsayed17/headgate-client-skill/actions/workflows/ci.yml)
 [![Python 3.14+](https://img.shields.io/badge/python-3.14%2B-blue)](pyproject.toml)
-[![headgate 0.7+](https://img.shields.io/badge/headgate-0.7%2B-blue)](https://github.com/kelsayed17/headgate)
+[![headgate 0.8+](https://img.shields.io/badge/headgate-0.8%2B-blue)](https://github.com/kelsayed17/headgate)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-orange)](.claude-plugin/plugin.json)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-green)](LICENSE)
 

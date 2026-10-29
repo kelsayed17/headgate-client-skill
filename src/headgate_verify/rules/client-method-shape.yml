@@ -30,13 +30,31 @@
 #           besides a body (`expect`, `pages`, `retry`, `limit` and `PageOptions`: `params`, `headers`, `timeout`,
 #           `deadline`, `idempotency_key`, `follow_redirects`, `cache_ttl`), so a body option (`body`, `json`,
 #           `data`, `content`, `files`), which headgate refuses on a walk, is reported. `pages=` and `limit=` are
-#           both present and bare UPPER_CASE names, the pager and page budget built once beside the client.
+#           both present and bare UPPER_CASE names, the pager and page budget built once beside the client. Its one
+#           positional argument is the first request: a path string (a walk of GETs), or, for a walk of POSTs
+#           (headgate 0.8.0), `PageRequest(<path string>, body=<request parameter>, write=<WRITER>)`, plus
+#           optionally the query as `params=params` (the bare `**params` collector, as a verb forwards it), and
+#           nothing else in it, the writer an UPPER_CASE name as `body=`'s is. `write=` is required: a
+#           `PageRequest` without one sends its body as JSON, so `PageRequest("x", body=request)` is reported, which
+#           is stricter than a verb's `json=<request parameter>`; a walk's body goes through the module's writer.
+#           Beside a `PageRequest` the walk takes no `params=` (the request carries its own query) and no
+#           `idempotency_key=` (one key on pages with different bodies would replay the first page's answer):
+#           headgate raises for either;
+#       (g) a STREAM, in an async def (an async generator): `async with self.stream(...) as <s>:`, the item bare or in
+#           one pair of parentheses, holding only `async for <c> in <s>.aiter_bytes():` holding only `yield <c>`,
+#           with no `else:`, `<s>` and `<c>` plain names. headgate's `stream` is the one verb that does not buffer the
+#           body, so a file too large to hold is handed on chunk by chunk and nothing is done to it. It is a GET:
+#           besides the forward checks below it takes only `params`, `headers`, `timeout`, `deadline`, `retry` and
+#           `follow_redirects` (no body option, no `expect=`, since a 2xx is its only success, and no `cache_ttl=`,
+#           `method=` or `last_event_id=`). Python's parser keeps `async with` and `async for` to an async def, so in
+#           a sync one the module is a parse-error.
 #     The legs are found by NAME in the class (c) or the module (d): `return await self._request(...)` does not
 #     conform, because `_request` is the base class's, and a leg the class does define is read and must itself
 #     conform. A sync `def` other than (e) is reported through its body: every other form awaits. Comments are not
 #     statements, and an f-string, t-string or `"doc", x` tuple is not a docstring.
 #
-# THE FORWARD CALL, `self.<verb>(...)` in (a)/(b), in a leg and in a module leg, and `self.paginate(...)` in (e), is
+# THE FORWARD CALL, `self.<verb>(...)` in (a)/(b), in a leg and in a module leg, `self.paginate(...)` in (e) and
+# `self.stream(...)` in (g), is
 # reported when its arguments contain, at any depth: an `await`; a public `self.<name>` (called or not); a
 # comprehension, generator or lambda; a walrus; a dict literal; a `*` or `**` splat; a call to a capitalised name
 # (`Model(...)`, `httpx2.Timeout(...)`) anywhere in a keyword value other than `body=`. Its keywords are only the ones
@@ -109,8 +127,8 @@
 # or another thing under its name (`import Evil as AsyncBaseClient`, `AsyncBaseClient = _Evil`), in any module: every
 # client-module test keys on the name.
 #
-# EXEMPTION: `# headgate-verify: allow client-method-shape -- <reason>` on the `def` line (a streamed download, for
-# one, is an `async with self.stream(...)` block, not one statement).
+# EXEMPTION: `# headgate-verify: allow client-method-shape -- <reason>` on the `def` line, for a method that cannot be
+# one of the forms above.
 #
 # PORTED from the source rule of the same name, with these changes:
 #   * `expect=` (R3) must be a bare UPPER_CASE module-level name (or `nothing`/`as_bytes`); the source accepted
@@ -125,6 +143,14 @@
 #   * the collector must be typed `Unpack[<X>Params]`, and a public method may not take `params` as a plain argument;
 #   * `retry=` may be a module-level UPPER_CASE name (R10; the source allowed only a literal or a parameter), so the
 #     policy client-order-writes-name-retry asks an executing write to name can be a declared `RetryPolicy`;
+#   * a walk's first request is a path string or a `PageRequest` as (e) says, as in the source, but its writer may be
+#     public, as `body=`'s may; `idempotency_key=` is refused only beside a `PageRequest`, where headgate raises (the
+#     source refused it on every walk, and a walk of GETs may carry one), and `params=` beside a `PageRequest` is
+#     refused, which the source passed;
+#   * the source's walk leg (a sync `_<leg>` paginating the envelope) is gone with the envelope leg;
+#   * a stream (g) takes only the keywords a GET stream does, so `cache_ttl=`, which the source allowed and headgate's
+#     `stream` does not take, is reported; its item may be in one pair of parentheses, which the source reported; and
+#     the source's check that it sits in an async def is left to Python's parser, which made it inert;
 #   * the class clause names headgate 0.7.0's request methods instead of an in-tree base's old names (`_send`,
 #     `_fetch`, `_status_error`, `_client_error` mean nothing to headgate, so defining one is a private helper).
 #
@@ -136,7 +162,14 @@
 #   * A capitalised global handed to a delegate reads as a payload type; the rule cannot tell a class from a
 #     capitalised constant. Likewise it does not check that a module-level `expect=` name IS a reader, or that an
 #     UPPER_CASE `deadline=`/`timeout=`/`pages=`/`limit=`/writer name is a module constant.
-#   * A second positional argument to a verb is not read: the verbs take the path alone positionally.
+#   * A second positional argument to a verb or a stream is not read: they take the path alone positionally.
+#   * A walk of POSTs with an `Idempotency-Key` in `headers=` is not reported, though headgate raises for it as for
+#     `idempotency_key=`: the rule does not read what a forwarded headers parameter holds.
+#   * A line or server-sent-event stream (`aiter_lines()`, `aiter_events()`, or `last_event_id=` to resume one) is
+#     reported, as is a stream with `method=`: only `aiter_bytes()` over a GET is read, so those still need an allow
+#     comment with the reason.
+#   * A stream item spelled any other way is reported, not read: without `as` (nothing names the stream the loop
+#     reads), `(self.stream(...)) as <s>`, or in two pairs of parentheses.
 #
 # ast-grep traps this rule is written around: nthChild counts COMMENTS unless given `ofRule`; `has:` iterates
 # punctuation (`(`, `,`, `)`), so a whitelist over children filters on text first; a metavariable captured OUTSIDE a
@@ -150,8 +183,10 @@ message: a public client method is one forward of the request it was handed, or 
 note: >-
   One public method is one endpoint: a single `return await self.<verb>(path, params=params, expect=READER)`
   forwarding its parameters, its reader a module-level UPPER_CASE name; a paged GET is a sync def returning
-  `self.paginate(path, expect=READER, pages=PAGES, limit=MAX_PAGES)`. Composition, deciding what an answer means and
-  building the request belong above the client.
+  `self.paginate(path, expect=READER, pages=PAGES, limit=MAX_PAGES)`, a walk of POSTs passing
+  `PageRequest(path, body=request, write=WRITER)` as the path; a download is an async def whose one statement is
+  `async with self.stream(path) as s:` over `async for c in s.aiter_bytes(): yield c`. Composition, deciding what an
+  answer means and building the request belong above the client.
 utils:
   # A docstring: ONE string with no interpolation. `"doc", await self.get(...)` is a tuple, not a docstring.
   doc: {kind: expression_statement, has: {nthChild: 1, kind: string, not: {has: {stopBy: end, kind: interpolation}}}, not: {has: {nthChild: 2}}}
@@ -330,8 +365,32 @@ utils:
       - matches: bad-forward-args-common
       - has: {field: arguments, has: {kind: keyword_argument, has: {field: name, not: {regex: '^(params|body|json|data|content|files|headers|idempotency_key|expect|retry|timeout|deadline|follow_redirects|cache_ttl)$'}}}}
   verb-call: {kind: call, has: {field: function, kind: attribute, regex: '^self\.(get|post|put|patch|delete|head)$'}}
+  # `PageRequest(<path string>, body=<request parameter>, write=<WRITER>)`, a walk of POSTs' first request (headgate
+  # 0.8.0): the path, the body the method was handed, the module's `encoder(Type)` writer, and optionally the query
+  # forwarded as `params=params` (the only way to give a walk of POSTs one); nothing else.
+  page-request:
+    kind: call
+    all:
+      - has: {field: function, kind: identifier, regex: '^PageRequest$'}
+      # Before body=: request-param's $RNAME, once bound by an `all:` clause, holds for the clauses after it.
+      - not: {has: {field: arguments, has: {kind: keyword_argument, all: [{has: {field: name, regex: '^params$'}}, {not: {has: {field: value, regex: '^params$', matches: request-param}}}]}}}
+      - has: {field: arguments, has: {nthChild: {position: 1, ofRule: &stmt {not: {kind: comment}}}, kind: string}}
+      - not: {has: {field: arguments, has: {nthChild: {position: 2, ofRule: *stmt}, not: {kind: keyword_argument}}}}
+      - has: {field: arguments, has: {kind: keyword_argument, all: [{has: {field: name, regex: '^body$'}}, {has: {field: value, matches: request-param}}]}}
+      - has: {field: arguments, has: {kind: keyword_argument, all: [{has: {field: name, regex: '^write$'}}, {has: {field: value, kind: identifier, regex: '^_?[A-Z][A-Z0-9_]*$'}}]}}
+      - not: {has: {field: arguments, has: {kind: keyword_argument, has: {field: name, not: {regex: '^(body|write|params)$'}}}}}
+  # The walk's one positional argument, its first request: a path string, or a PageRequest.
+  walk-first-request:
+    kind: call
+    has:
+      field: arguments
+      all:
+        - has: {nthChild: {position: 1, ofRule: *stmt}, any: [{kind: string}, {matches: page-request}]}
+        - not: {has: {nthChild: {position: 2, ofRule: *stmt}, not: {kind: keyword_argument}}}
   # A walk: `return self.paginate(...)`, not awaited, in a SYNC def (an async one would hand back a coroutine). Only
-  # paginate's own keywords, no body (pages are GETs), and the pager and page budget module-level names.
+  # paginate's own keywords, no body option (a walk of POSTs' body rides its PageRequest), and the pager and page
+  # budget module-level names. Beside a PageRequest, no `params=` (it carries its own query) and no
+  # `idempotency_key=` (one key on pages with different bodies): headgate 0.8.0 raises for either.
   paginate-stmt:
     kind: return_statement
     inside: {kind: block, inside: {kind: function_definition, not: {regex: '^async\s'}}}
@@ -345,6 +404,11 @@ utils:
         - has: {field: arguments, has: {kind: keyword_argument, has: {field: name, regex: '^pages$'}}}
         - has: {field: arguments, has: {kind: keyword_argument, has: {field: name, regex: '^limit$'}}}
         - not: {has: {field: arguments, has: {kind: keyword_argument, all: [{has: {field: name, regex: '^(pages|limit)$'}}, {not: {has: {field: value, kind: identifier, regex: '^_?[A-Z][A-Z0-9_]*$'}}}]}}}
+        - matches: walk-first-request
+        - not:
+            all:
+              - has: {field: arguments, has: {nthChild: {position: 1, ofRule: *stmt}, kind: call}}
+              - has: {field: arguments, has: {kind: keyword_argument, has: {field: name, regex: '^(params|idempotency_key)$'}}}
   forward-call:
     matches: verb-call
     not: {matches: bad-verb-args}
@@ -359,7 +423,7 @@ utils:
     kind: block
     any:
       - all:
-          - has: {nthChild: {position: 1, ofRule: &stmt {not: {kind: comment}}}, matches: forward-stmt}
+          - has: {nthChild: {position: 1, ofRule: *stmt}, matches: forward-stmt}
           - not: {has: {nthChild: {position: 2, ofRule: *stmt}}}
       - all:
           - has: {nthChild: {position: 1, ofRule: *stmt}, matches: doc}
@@ -453,7 +517,57 @@ utils:
               - has: {field: name, pattern: $FN}
               - has: {field: parameters, has: {nthChild: 1, kind: typed_parameter, has: {nthChild: 1, kind: identifier, pattern: $RECV}}}
               - has: {field: body, matches: module-leg-block}
-  one-stmt: {any: [{matches: forward-stmt}, {matches: method-delegate-stmt}, {matches: module-delegate-stmt}, {matches: paginate-stmt}]}
+  # --- the stream ----------------------------------------------------------------------------------
+  # `self.stream(...)`, headgate's unbuffered verb: the forward checks, and only the keywords a GET stream takes (no
+  # body option, no `expect=`, no `cache_ttl=`, no `method=`).
+  stream-call:
+    kind: call
+    all:
+      - has: {field: function, kind: attribute, regex: '^self\.stream$'}
+      - not: {matches: bad-forward-args-common}
+      - not: {has: {field: arguments, has: {kind: keyword_argument, has: {field: name, not: {regex: '^(params|headers|timeout|deadline|retry|follow_redirects)$'}}}}}
+  # `yield <c>` and nothing else in the loop body.
+  stream-yield:
+    kind: block
+    all:
+      - has: {nthChild: {position: 1, ofRule: *stmt}, kind: expression_statement, has: {nthChild: 1, kind: yield, has: {nthChild: 1, pattern: $CHUNK}}}
+      - not: {has: {nthChild: {position: 2, ofRule: *stmt}}}
+  # `async for <c> in <s>.aiter_bytes():` over the stream just opened, its body only `yield <c>`, with no `else:`.
+  stream-loop:
+    kind: for_statement
+    regex: '^async\s+for\s'
+    all:
+      - has: {field: left, kind: identifier, pattern: $CHUNK}
+      - has:
+          field: right
+          all:
+            - has: {field: function, kind: attribute, all: [{has: {field: object, pattern: $STREAM}}, {has: {field: attribute, regex: '^aiter_bytes$'}}]}
+            - not: {has: {field: arguments, has: {nthChild: 1}}}
+      - not: {has: {field: alternative, kind: else_clause}}
+      - has: {field: body, matches: stream-yield}
+  # `self.stream(...) as <s>`, the one item of the `async with`, bare or in one pair of parentheses.
+  stream-item:
+    kind: as_pattern
+    all:
+      - has: {nthChild: 1, matches: stream-call}
+      - has: {field: alias, has: {kind: identifier, pattern: $STREAM}}
+  # `async with self.stream(...) as <s>:` (one item), its body only the loop. Python's parser keeps `async with` and
+  # `async for` to an async def, so the module would be a parse-error in a sync one.
+  stream-stmt:
+    kind: with_statement
+    regex: '^async\s+with\s'
+    all:
+      - has:
+          kind: with_clause
+          all:
+            - has: {kind: with_item, has: {any: [{matches: stream-item}, {kind: parenthesized_expression, has: {matches: stream-item}}]}}
+            - not: {has: {nthChild: 2}}
+      - has:
+          field: body
+          all:
+            - has: {nthChild: {position: 1, ofRule: *stmt}, matches: stream-loop}
+            - not: {has: {nthChild: {position: 2, ofRule: *stmt}}}
+  one-stmt: {any: [{matches: forward-stmt}, {matches: method-delegate-stmt}, {matches: module-delegate-stmt}, {matches: paginate-stmt}, {matches: stream-stmt}]}
   conforming-body:
     kind: block
     any:
