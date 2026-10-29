@@ -21,7 +21,7 @@ import functools
 import re
 from dataclasses import dataclass, field, fields
 from importlib.resources import files as resource_files
-from pathlib import PurePath
+from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Any
 
 import yaml
@@ -160,6 +160,25 @@ def load_rules() -> tuple[YamlRule, ...]:
     return tuple(
         rule_from_yaml(entry.read_text(encoding="utf-8"), entry.name.removesuffix(".yml")) for entry in entries
     )
+
+
+@functools.cache
+def load_project_rules(rule_dirs: frozenset[str]) -> tuple[YamlRule, ...]:
+    """Return the rules in each of ``rule_dirs``' ``*.yml``, sorted by id; the project's own, beside the shipped ones.
+
+    Raise ``ValueError`` for a rule the shipped rules could not load either, and for an id that a shipped rule, a
+    reserved id or another project rule already holds: one id names one rule (the engine also refuses a check's id).
+    """
+    taken = {rule.id for rule in load_rules()} | {rule.id for rule in RESERVED}
+    rules: list[YamlRule] = []
+    for directory in sorted(rule_dirs):
+        for entry in sorted(Path(directory).glob("*.yml")):
+            rule = rule_from_yaml(entry.read_text(encoding="utf-8"), entry.name.removesuffix(".yml"))
+            if rule.id in taken:
+                raise _invalid(rule.id, f"{entry} takes an id another rule already holds")
+            taken.add(rule.id)
+            rules.append(rule)
+    return tuple(sorted(rules, key=lambda rule: rule.id))
 
 
 def run_rules(pkg: Package, modules: Modules, rules: Sequence[YamlRule], config: Config) -> list[Finding]:

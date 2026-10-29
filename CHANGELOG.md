@@ -7,6 +7,10 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- `rule-dirs` in `[tool.headgate-verify]` names directories of a project's own rules (`<id>.yml`, in the shipped
+  rules' format), relative to that `pyproject.toml`. The command runs them beside the shipped rules, with their
+  `note` as the fix, and an allow comment may name their ids. A project rule that will not load, takes the id of a
+  shipped rule, a check or a reserved id, or names a directory that does not exist is a usage error (exit `2`).
 - `headgate-snapshot write <docs_paths.json> <url or file>` writes the docs snapshot from the vendor's OpenAPI or
   Swagger document (JSON, YAML, or `JSON.parse('…')` literals in a docs page bundle), and `refresh` reads each
   snapshot's `source` again. It sends a `User-Agent` naming the tool and an `Accept` preferring the OpenAPI media

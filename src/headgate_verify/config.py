@@ -32,6 +32,8 @@ class Config:
     """Words ignored when comparing names."""
     post_reads: frozenset[str] = frozenset()
     """Method names that read by POST."""
+    rule_dirs: frozenset[str] = frozenset()
+    """Directories of the project's own rules (``<id>.yml``), run beside the shipped ones; absolute once loaded."""
     write_name_fragments: frozenset[str] = frozenset({"order", "orders", "transfer", "withdraw", "payment"})
     """Name fragments that mark a method as a write."""
 
@@ -91,5 +93,17 @@ def _from_file(pyproject: Path) -> Config:
         if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
             msg = f"{pyproject}: {key!r} in [tool.headgate-verify] must be a list of strings"
             raise ConfigError(msg)
-        values[known[key]] = frozenset(value)
+        values[known[key]] = _rule_dirs(pyproject, value) if key == "rule-dirs" else frozenset(value)
     return Config(**values)
+
+
+def _rule_dirs(pyproject: Path, entries: list[str]) -> frozenset[str]:
+    """Resolve each entry against the directory holding ``pyproject``; raise ``ConfigError`` for one that is no dir."""
+    resolved: set[str] = set()
+    for entry in entries:
+        directory = (pyproject.parent / entry).resolve()
+        if not directory.is_dir():
+            msg = f"{pyproject}: 'rule-dirs' entry {entry!r} in [tool.headgate-verify] is not a directory"
+            raise ConfigError(msg)
+        resolved.add(str(directory))
+    return frozenset(resolved)
