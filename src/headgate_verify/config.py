@@ -34,7 +34,21 @@ class Config:
     """Method names that read by POST."""
     rule_dirs: frozenset[str] = frozenset()
     """Directories of the project's own rules (``<id>.yml``), run beside the shipped ones; absolute once loaded."""
-    write_name_fragments: frozenset[str] = frozenset({"order", "orders", "transfer", "withdraw", "payment"})
+    write_name_fragments: frozenset[str] = frozenset(
+        {
+            "order",
+            "orders",
+            "transfer",
+            "withdraw",
+            "payment",
+            "multileg",
+            "close_position",
+            "close_all_positions",
+            "close_option_position",
+            "liquidat",
+            "exercise_option",
+        }
+    )
     """Name fragments that mark a method as a write."""
 
 

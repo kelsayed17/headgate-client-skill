@@ -8,7 +8,8 @@
 # Reported: a call `self.post(...)`, `self.put(...)`, `self.patch(...)` or `self.delete(...)` (the callee
 # parenthesised or not) with no `retry=` keyword, anywhere inside a def (sync or async, at any nesting, through nested
 # defs and lambdas) whose name contains one of the project's write-name fragments (`Config.write_name_fragments`,
-# `[tool.headgate-verify] write-name-fragments`; by default order, orders, transfer, withdraw, payment). A def whose
+# `[tool.headgate-verify] write-name-fragments`; by default order, orders, transfer, withdraw, payment, multileg,
+# close_position, close_all_positions, close_option_position, liquidat, exercise_option). A def whose
 # name STARTS with `cancel_` or `preview_`, or is exactly `cancel` or `preview`, and does not contain `replace`, is not
 # executing: a preview sends nothing that executes, and a re-sent cancel is the one write you want to land. A name
 # that only contains the word (`place_one_cancels_other_order`, `place_order_after_preview`) or a cancel-and-replace
@@ -20,6 +21,9 @@
 # submit_order, close_position, liquidat, ...) is the configured fragment list; since the default fragment `order`
 # also matches `cancel_order`, which the source's list never named, a name starting with `cancel_` joins one starting
 # with `preview_` as not executing (anchored, and never a cancel-and-replace; the source's `preview` was unanchored).
+#
+# A method named in `post-reads` (`Config.post_reads`) is a read by POST, so a fragment in its name
+# (`search_orders`, `estimate_multileg_margin`) does not make it a write.
 #
 # DISCLOSED: a write issued through a helper the executing method calls (`self._submit(...)` whose own name holds no
 # fragment) is not followed; a fragment matches anywhere in a name (`order` in `border_crossings`).
@@ -51,6 +55,9 @@ rule:
     has:
       field: name
       regex: '{{config.write_name_fragments}}'
-      # A cancel or a preview by name: starts with `cancel_`/`preview_` or is exactly `cancel`/`preview`, and is not a
-      # cancel-and-replace.
-      not: {regex: '^(cancel|preview)(_|$)', not: {regex: 'replace'}}
+      all:
+        # A cancel or a preview by name: starts with `cancel_`/`preview_` or is exactly `cancel`/`preview`, and is not
+        # a cancel-and-replace.
+        - not: {regex: '^(cancel|preview)(_|$)', not: {regex: 'replace'}}
+        # A method the project declares a read by POST (`post-reads`): a re-sent read is harmless.
+        - not: {regex: '^(?:{{config.post_reads}})$'}

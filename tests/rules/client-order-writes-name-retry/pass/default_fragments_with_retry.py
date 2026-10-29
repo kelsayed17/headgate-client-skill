@@ -1,4 +1,4 @@
-# The default fragments (order, orders, transfer, withdraw, payment): each write names retry=.
+# The default fragments: each write names retry=.
 class Bank(AsyncBaseClient):
     async def create_transfer(self, transfer: NewTransfer) -> Transfer:
         return await self.post("transfers", body=NEW_TRANSFER(transfer), expect=TRANSFER, retry=False)
