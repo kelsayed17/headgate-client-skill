@@ -142,9 +142,9 @@ def rule_from_yaml(text: str, rule_id: str) -> YamlRule:
     globs = data.get("files", _DEFAULT_FILES)
     if not isinstance(globs, list | tuple) or not all(isinstance(glob, str) for glob in globs):
         raise _invalid(rule_id, "files must be a list of globs")
-    packages = data.get("packages")
-    if packages is not None and (
-        not isinstance(packages, list) or not packages or not all(isinstance(name, str) for name in packages)
+    packages = data.get("packages", [])
+    if "packages" in data and (
+        not isinstance(packages, list) or not packages or not all(isinstance(name, str) and name for name in packages)
     ):
         raise _invalid(rule_id, "packages must be a non-empty list of package names")
     skip_packages_in = data.get("skip-packages-in")
@@ -159,7 +159,7 @@ def rule_from_yaml(text: str, rule_id: str) -> YamlRule:
         config=_sg_config(data),
         source=text,
         skip_packages_in=skip_packages_in,
-        packages=None if packages is None else frozenset(packages),
+        packages=frozenset(packages) if "packages" in data else None,
     )
 
 

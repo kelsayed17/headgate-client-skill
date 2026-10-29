@@ -142,7 +142,7 @@ def test_packages_beside_skip_packages_in_both_apply(tmp_path: Path) -> None:
     assert [finding.path.parent.name for finding in found] == ["alpha"]
 
 
-@pytest.mark.parametrize("packages", ["alpha", "[1]", "[]", "{a: b}"])
+@pytest.mark.parametrize("packages", ["alpha", "[1]", "[]", "{a: b}", "~", "['']"])
 def test_packages_must_be_a_list_of_names(packages: str) -> None:
     """``packages`` is a non-empty list of package names; an empty list would silently disable the rule."""
     with pytest.raises(ValueError, match="packages"):
