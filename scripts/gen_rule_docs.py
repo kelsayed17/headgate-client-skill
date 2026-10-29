@@ -34,6 +34,9 @@ _SPACE = re.compile(r"\s+")
 _NAMING_FIELDS = frozenset({"filler_words", "post_reads"})
 """The ``Config`` fields ``check_names`` defaults from the package's pyproject (ruling R26); no YAML rule reads them."""
 _NAMING_READER = "`check_names`, in the naming test"
+_ENGINE_FIELDS = frozenset({"rule_dirs"})
+"""The ``Config`` fields the engine itself reads; no rule reads them."""
+_ENGINE_READER = "the command: the project's own rules, run beside these"
 
 
 @dataclass(frozen=True)
@@ -83,7 +86,12 @@ def _config_rows() -> list[str]:
     lines = []
     for field in fields(Config):
         default = ", ".join(f'"{value}"' for value in sorted(getattr(Config(), field.name)))
-        used = ", ".join([*readers.get(field.name, []), *([_NAMING_READER] if field.name in _NAMING_FIELDS else [])])
+        own = []
+        if field.name in _NAMING_FIELDS:
+            own.append(_NAMING_READER)
+        if field.name in _ENGINE_FIELDS:
+            own.append(_ENGINE_READER)
+        used = ", ".join([*readers.get(field.name, []), *own])
         lines.append(f"| `{_key(field.name)}` | `[{default}]` | {used} |")
     return lines
 
@@ -114,7 +122,7 @@ its fix indented by four spaces; with `--format json` each is an object with `ru
 |---|---|
 | `0` | no error (warnings may have been printed) |
 | `1` | at least one error |
-| `2` | a usage error: no path given, a missing path, a path with no client package, or a malformed config table |
+| `2` | a usage error: no path, a missing path, a path with no client package, a bad config table or project rule |
 
 A run that checks nothing is not clean: every path under which no client package is found is named on stderr, and
 the exit is `2`.
@@ -139,6 +147,13 @@ write-name-fragments = ["order", "orders", "transfer", "withdraw", "payment"]
 """
 
 _MIDDLE = """
+`rule-dirs` entries are directories relative to that `pyproject.toml`. Each `<id>.yml` in them is a rule in the
+same format as the shipped ones, run beside them, with its `note` as the fix and allow comments naming its id. A
+project rule may not take the id of a shipped rule, a check or a reserved id. A directory that does not exist, a
+file that is not valid YAML, a rule ast-grep refuses, a `.yaml` file (rules are `.yml`) or a taken id is exit `2`,
+before any package is read. Rules are read on every run. Test a project rule as the shipped ones are tested: a
+package per case, checked with `headgate_verify.engine.verify(paths, load_config(root))`.
+
 `one-flavour` reads a different file: the `pyproject.toml` nearest the checked **package**, for the headgate extra
 its flavour needs.
 
