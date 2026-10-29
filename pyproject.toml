@@ -43,6 +43,7 @@ Changelog = "https://github.com/kelsayed17/headgate-client-skill/blob/main/CHANG
 [project.scripts]
 headgate-verify = "headgate_verify.cli:main"
 headgate-snapshot = "headgate_verify.spec:main"
+headgate-names = "headgate_verify.review:main"
 
 [dependency-groups]
 dev = [

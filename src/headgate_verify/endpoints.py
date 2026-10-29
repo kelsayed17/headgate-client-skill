@@ -7,7 +7,7 @@ The client is read with ast-grep-py and never imported. A method whose path cann
 (``unreadable_methods``), never dropped in silence.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ast_grep_py import SgRoot
@@ -102,6 +102,8 @@ class Request:
 
     endpoint: Endpoint | None
     call: str
+    returns: str = ""
+    """The public method's return annotation as written, ``""`` when it has none."""
 
 
 def _request_name(call: SgNode, receiver: str) -> str | None:
@@ -182,7 +184,8 @@ def read_requests(client_module: Path) -> dict[str, Request]:
                 continue
             request = _first_request(body, "self", {}, module) or _delegated(body, methods, module)
             if request is not None:
-                requests[name] = request
+                annotation = method.field("return_type")
+                requests[name] = replace(request, returns="" if annotation is None else annotation.text())
     return requests
 
 
