@@ -146,8 +146,12 @@ ending `_URL` holds an absolute URL, a relative one ends `_PATH` (`client-url-su
 - **A non-idempotent write names its retry policy** with `retry=`, a module-level `RetryPolicy` or a literal: a
   re-sent order is a second order. A method whose name holds one of `write-name-fragments` is such a write unless it
   is a `cancel_`/`preview_` (`client-order-writes-name-retry`).
-- A method that cannot be one statement (a streamed download is an `async with self.stream(...)` block) carries an
-  allow comment on its `def` line with the reason: `# headgate-verify: allow client-method-shape -- <reason>`.
+- **A download too large to hold is a stream**: an `async def` returning `AsyncIterator[bytes]` whose one statement
+  is `async with self.stream(path, ...) as stream:`, holding only `async for chunk in stream.aiter_bytes():`, holding
+  only `yield chunk`. `stream` is headgate's one unbuffered verb: it takes no `expect=` (a 2xx is its only success)
+  and no body, and its other keywords are forwarded as a verb's are.
+- A method that cannot be one statement carries an allow comment on its `def` line with the reason:
+  `# headgate-verify: allow client-method-shape -- <reason>`.
 
 ## Documented answers
 
@@ -176,6 +180,10 @@ def get_filings(self, **params: Unpack[FilingsParams]) -> Paginated[Page[Filing]
   `LinkHeader`, `Next`), and `limit=` a `PageLimit(MAX_PAGES)` budget; both are required, both module-level names
   from `pagination.py`. A walk without a page budget is unbounded. With headgate's default `on_limit="raise"`, a walk
   that hits the budget raises `PageLimitError`, so a caller never mistakes a cut-short walk for the whole result.
+- A walk of POSTs (headgate 0.8.0) passes its body in its first request, the walk's one positional argument:
+  `self.paginate(PageRequest("v1/search", body=query, write=SEARCH_QUERY), expect=..., pages=..., limit=...)`, the
+  path a string, the body the request parameter, the writer the module's `encoder(...)`, and nothing else in the
+  `PageRequest`. Beside one, `paginate` takes no `params=` and no `idempotency_key=`: headgate refuses both.
 - `pagination.py` holds the pagers, the budget and any helper that reads a page (`items=`, `next=`), never a page loop
   (`client-no-hand-rolled-page-loop`). Its docstring says how the API pages and why the budget is what it is (pages
   times the pace is a duration: say it).

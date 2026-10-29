@@ -42,6 +42,13 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- `client-method-shape` checks a walk's first request: a path string, or `PageRequest(<path>, body=<request
+  parameter>, write=<WRITER>)` and nothing else in it, with no `params=` or `idempotency_key=` beside a
+  `PageRequest`. A computed path, a second positional argument or a `PageRequest` built any other way no longer
+  passes.
+- `client-method-shape` passes a stream, `async with self.stream(...) as <s>:` holding only
+  `async for <c> in <s>.aiter_bytes(): yield <c>`, in an async def, which it used to report; the stream's keywords
+  take the forward checks, with no body option, `expect=` or `cache_ttl=`.
 - `one-class-per-host` no longer reports a comment inside a client class's bases list as a second base.
 - A `pyproject.toml` that is not UTF-8, or cannot be read, is a usage error (exit 2) naming the file, not a traceback;
   `check_names` raises `ConfigError` for it.
