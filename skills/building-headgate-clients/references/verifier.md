@@ -41,6 +41,7 @@ exit `2` for the command and a `ConfigError` for `check_names`.
 ```toml
 [tool.headgate-verify]
 browser-user-agent-packages = ["scraped_portal"]   # packages whose host forces a browser User-Agent
+package-modules = ["helpers.py", "feeds/parse.py"] # public modules besides the conventional ones (all, or one package)
 post-reads = ["search_orders"]                     # reads by POST: named like reads, never held to retry=
 write-name-fragments = ["order", "redeem"]         # REPLACES the defaults (the table below): list every fragment
 ```
@@ -50,6 +51,7 @@ write-name-fragments = ["order", "redeem"]         # REPLACES the defaults (the 
 | `browser-user-agent-packages` | `[]` | `client-browser-user-agent-only-where-allowed` |
 | `filler-words` | `["api", "global", "locale", "market", "markets", "us"]` | `check_names`, in the naming test |
 | `method-prefixes` | `["fetch", "stream", "walk"]` | `check_names`, in the naming test |
+| `package-modules` | `[]` | `package-layout` |
 | `post-reads` | `[]` | `client-order-writes-name-retry`, `check_names`, in the naming test |
 | `rule-dirs` | `[]` | the command: the project's own rules, run beside these |
 | `write-name-fragments` | `["close_all_positions", "close_option_position", "close_position", "exercise_option", "liquidat", "multileg", "order", "orders", "payment", "transfer", "withdraw"]` | `client-order-writes-name-retry` |
@@ -184,7 +186,7 @@ prints it under the finding; `--format json` gives it as `fix`.
 | `model-has-no-provider-prefix` | Drop the provider name from the class name: `LdaFiling` in package `lda` is `Filing`. |
 | `one-class-per-host` | Give each host its own class, subclassing only AsyncBaseClient and passing `base_url=` a module-level name of its module; move a call to another host into that host's class. |
 | `one-flavour` | Use one model flavour (msgspec or pydantic) across the package, and declare `headgate[<flavour>]` in the nearest pyproject.toml. |
-| `package-layout` | Add the file the finding names: a docstring-only `__init__.py`, `models.py`, a schema-valid `docs_paths.json`, `test_client.py` (or one `test_client_<host>.py` per host) and `test_method_names.py` in the tests directory, and `pagination.py` beside a paged client. |
+| `package-layout` | Add the file the finding names: a docstring-only `__init__.py`, `models.py`, a schema-valid `docs_paths.json`, `test_client.py` (or one `test_client_<host>.py` per host) and `test_method_names.py` in the tests directory, and `pagination.py` beside a paged client; or declare a project module in `package-modules`. |
 | `bad-exemption` | Give the allow comment a reason after `--` and name a rule it covers on that line or block, or delete it. |
 | `parse-error` | Make the module a readable UTF-8 file that Python's own parser accepts; no other rule reads it until then. |
 

@@ -72,6 +72,8 @@ _CLAUSES: dict[str, tuple[str, int]] = {
     "package-layout/fail/tests_missing_method_names": ("has no test_method_names.py", 1),
     "package-layout/fail/tests_missing_client_tests": ("has no test_client.py", 1),
     "package-layout/fail/tests_lookalike_client_tests": ("has no test_client.py", 1),
+    "package-layout/fail/undeclared_module": ("helpers.py is not a module the conventions name", 1),
+    "package-layout/fail/module_declared_for_another_package": ("helpers.py is not a module the conventions name", 1),
     "package-layout/fail/paginate_without_pagination": ("calls self.paginate but has no pagination.py", 1),
     "one-flavour/fail/mixed": ("imports both flavours", 1),
     "one-flavour/fail/mixed_headgate_submodule_import": ("imports both flavours", 1),

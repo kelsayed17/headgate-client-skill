@@ -7,6 +7,11 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- `package-layout` reports a public top-level module of a client package that the conventions do not name
+  (`__init__`, `client`, `models`, `pagination`) and `package-modules` does not declare, at line 1 of that file, so an
+  allow comment there exempts it. `[tool.headgate-verify] package-modules` lists `"name.py"` (allowed in every
+  package) or `"<package>/name.py"` (in that one); a malformed, `_`-prefixed, conventional or duplicate entry is a
+  `ConfigError`. `_`-prefixed files, subdirectories and non-`.py` files are not read.
 - `package-layout` reads a package's real shape: the client test may be one file per host (`test_client_<host>.py`, any
   file named `test_client_*.py`) beside `test_method_names.py`, and `models.py` is required only when the package
   declares a model (a `Struct` or `BaseModel` class in another module, subscripted or not; a bare `TypedDict` does not count, or an import from `models`), so a
