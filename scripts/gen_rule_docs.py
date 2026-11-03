@@ -34,6 +34,9 @@ _SPACE = re.compile(r"\s+")
 _NAMING_FIELDS = frozenset({"filler_words", "method_prefixes", "post_reads"})
 """The ``Config`` fields ``check_names`` defaults from the package's pyproject (ruling R26); no YAML rule reads them."""
 _NAMING_READER = "`check_names`, in the naming test"
+_LAYOUT_FIELDS = frozenset({"package_modules"})
+"""The ``Config`` fields the ``package-layout`` check reads; a Python check lists no fields of its own."""
+
 _ENGINE_FIELDS = frozenset({"rule_dirs"})
 """The ``Config`` fields the engine itself reads; no rule reads them."""
 _ENGINE_READER = "the command: the project's own rules, run beside these"
@@ -89,6 +92,8 @@ def _config_rows() -> list[str]:
         own = []
         if field.name in _NAMING_FIELDS:
             own.append(_NAMING_READER)
+        if field.name in _LAYOUT_FIELDS:
+            own.append("`package-layout`")
         if field.name in _ENGINE_FIELDS:
             own.append(_ENGINE_READER)
         used = ", ".join([*readers.get(field.name, []), *own])
@@ -140,6 +145,7 @@ exit `2` for the command and a `ConfigError` for `check_names`.
 ```toml
 [tool.headgate-verify]
 browser-user-agent-packages = ["scraped_portal"]   # packages whose host forces a browser User-Agent
+package-modules = ["helpers.py", "feeds/parse.py"] # public modules besides the conventional ones (all, or one package)
 post-reads = ["search_orders"]                     # reads by POST: named like reads, never held to retry=
 write-name-fragments = ["order", "redeem"]         # REPLACES the defaults (the table below): list every fragment
 ```

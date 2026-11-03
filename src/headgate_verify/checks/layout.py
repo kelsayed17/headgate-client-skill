@@ -14,11 +14,14 @@ Reported:
 * a ``docs_paths.json`` that is not valid JSON or breaks the docs snapshot schema (``headgate_verify.naming``), at its
   line 1. Whether the client's names follow it is the client's own ``test_method_names.py``'s business;
 * no tests directory holding both a client test and ``test_method_names.py``. A client test is ``test_client.py`` or
-  one file per host, ``test_client_<host>.py`` (``test_client*.py``). The tests directory is
+  one file per host, ``test_client_<host>.py`` (``test_client_*.py``). The tests directory is
   ``<package>/tests/``, ``tests/<package name>/`` beside the package (``<package>/../tests/<package name>/``, as the
   conventions draw it; ruling R14), or ``tests/<package name>/`` under the project root, the directory of the nearest
   ``pyproject.toml`` at or above the package (with no ``pyproject.toml`` only the first two are looked for). When one
   of them exists, each file it lacks is named;
+* a public top-level ``*.py`` file of the package that is neither ``__init__``, ``client``, ``models`` nor
+  ``pagination``, and not declared in ``package-modules``, at its own line 1 (so an allow comment there exempts it).
+  ``_``-prefixed files, subdirectories and files that are not ``.py`` are not read;
 * a call to ``self.paginate(...)`` in any module of the package with no ``pagination.py`` beside it, at the call.
 
 A missing file is reported at line 1 of ``client.py``, so an allow comment above its first statement exempts it. An
@@ -27,7 +30,7 @@ A missing file is reported at line 1 of ``client.py``, so an allow comment above
 
 from typing import TYPE_CHECKING
 
-from headgate_verify.config import nearest_pyproject
+from headgate_verify.config import CONVENTIONAL_MODULES, nearest_pyproject
 from headgate_verify.finding import Rule
 from headgate_verify.snapshot import SnapshotError, load_snapshot
 from headgate_verify.syntax import bases, classes, line, statements, string_prefix
@@ -47,7 +50,7 @@ RULE = Rule(
     severity="error",
     fix="Add the file the finding names: a docstring-only `__init__.py`, `models.py`, a schema-valid "
     "`docs_paths.json`, `test_client.py` (or one `test_client_<host>.py` per host) and `test_method_names.py` in the "
-    "tests directory, and `pagination.py` beside a paged client.",
+    "tests directory, and `pagination.py` beside a paged client; or declare a project module in `package-modules`.",
 )
 _INIT = "__init__.py"
 _DOCS = "docs_paths.json"
@@ -191,13 +194,38 @@ def _check_pagination(pkg: Package, modules: Modules) -> list[Finding]:
     return []
 
 
+def _check_modules(pkg: Package, config: Config) -> list[Finding]:
+    """Report, at line 1 of the file, each public top-level module that is neither conventional nor declared."""
+    declared = {entry for entry in config.package_modules if "/" not in entry}
+    declared |= {
+        entry.partition("/")[2] for entry in config.package_modules if entry.partition("/")[0] == pkg.root.name
+    }
+    return [
+        RULE.finding(
+            path,
+            1,
+            f"{path.name} is not a module the conventions name ({_conventional()}); declare it in "
+            "[tool.headgate-verify] package-modules, or make it private with a leading underscore",
+        )
+        for path in sorted(pkg.root.glob("*.py"))
+        if path.is_file()
+        and not path.name.startswith("_")
+        and path.name not in CONVENTIONAL_MODULES
+        and path.name not in declared
+    ]
+
+
+def _conventional() -> str:
+    return ", ".join(name.removesuffix(".py") for name in sorted(CONVENTIONAL_MODULES))
+
+
 def check(pkg: Package, modules: Modules, config: Config) -> list[Finding]:
     """Return the ``package-layout`` findings of ``pkg``."""
-    del config
     return [
         *_check_init(pkg, modules),
         *_check_required(pkg, modules),
         *_check_snapshot(pkg),
         *_check_tests(pkg),
         *_check_pagination(pkg, modules),
+        *_check_modules(pkg, config),
     ]

@@ -117,3 +117,37 @@ def test_method_prefixes_rejects_an_unknown_shape(tmp_path: Path) -> None:
     _write(tmp_path, '[tool.headgate-verify]\nmethod-prefixes = ["iter"]\n')
     with pytest.raises(ConfigError, match="method-prefixes"):
         load_config(tmp_path)
+
+
+def test_package_modules_is_read(tmp_path: Path) -> None:
+    """``package-modules`` lists global and per-package modules."""
+    _write(tmp_path, '[tool.headgate-verify]\npackage-modules = ["helpers.py", "ecb/structures.py"]\n')
+    assert load_config(tmp_path).package_modules == frozenset({"helpers.py", "ecb/structures.py"})
+
+
+@pytest.mark.parametrize(
+    ("entry", "match"),
+    [
+        ("_private.py", "leading underscore"),
+        ("pkg/_private.py", "leading underscore"),
+        ("helpers", "must be 'name.py'"),
+        ("Helpers.py", "must be 'name.py'"),
+        ("a/b/helpers.py", "must be 'name.py'"),
+        ("sub/helpers.txt", "must be 'name.py'"),
+        ("client.py", "conventions name"),
+        ("ecb/models.py", "conventions name"),
+        ("pagination.py", "conventions name"),
+    ],
+)
+def test_package_modules_refuses_a_bad_entry(tmp_path: Path, entry: str, match: str) -> None:
+    """An entry that is malformed, private or conventional is a config error."""
+    _write(tmp_path, f'[tool.headgate-verify]\npackage-modules = ["{entry}"]\n')
+    with pytest.raises(ConfigError, match=match):
+        load_config(tmp_path)
+
+
+def test_package_modules_refuses_a_duplicate(tmp_path: Path) -> None:
+    """The same entry twice is a config error."""
+    _write(tmp_path, '[tool.headgate-verify]\npackage-modules = ["helpers.py", "helpers.py"]\n')
+    with pytest.raises(ConfigError, match="more than once"):
+        load_config(tmp_path)

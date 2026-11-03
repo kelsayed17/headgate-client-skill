@@ -6,6 +6,7 @@
 ``read_pyproject`` is the one reader of a ``pyproject.toml``: the config and the ``one-flavour`` check both use it.
 """
 
+import re
 import tomllib
 from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING, Any
@@ -22,6 +23,12 @@ CALL_SHAPES: frozenset[str] = frozenset({"walk", "stream", "fetch"})
 """The prefixes ``method-prefixes`` may list: a paged walk, a streamed body and a raw-bytes read."""
 
 
+CONVENTIONAL_MODULES = frozenset({"__init__.py", "client.py", "models.py", "pagination.py"})
+"""The modules a client package's layout names; ``package-modules`` need not (and may not) list them."""
+
+_PACKAGE_MODULE = re.compile(r"([a-z_][a-z0-9_]*/)?[a-z][a-z0-9_]*\.py")
+
+
 class ConfigError(ValueError):
     """The ``pyproject.toml`` holding the config cannot be read, or its table is malformed; the message says how."""
 
@@ -36,6 +43,9 @@ class Config:
     """Words ignored when comparing names."""
     method_prefixes: frozenset[str] = frozenset({"walk", "stream", "fetch"})
     """The call-shape prefixes (``walk_``, ``stream_``, ``fetch_``) a read may take in place of ``get_``."""
+    package_modules: frozenset[str] = frozenset()
+    """Public modules a client package may hold besides the conventional ones: ``name.py`` in every package,
+    ``<package>/name.py`` in one."""
     post_reads: frozenset[str] = frozenset()
     """Method names that read by POST."""
     rule_dirs: frozenset[str] = frozenset()
@@ -116,8 +126,31 @@ def _from_file(pyproject: Path) -> Config:
         if key == "method-prefixes" and not set(value) <= CALL_SHAPES:
             msg = f"{pyproject}: 'method-prefixes' in [tool.headgate-verify] may list only {sorted(CALL_SHAPES)}"
             raise ConfigError(msg)
+        if key == "package-modules":
+            _check_package_modules(pyproject, value)
         values[known[key]] = _rule_dirs(pyproject, value) if key == "rule-dirs" else frozenset(value)
     return Config(**values)
+
+
+def _check_package_modules(pyproject: Path, entries: list[str]) -> None:
+    """Raise ``ConfigError`` for an entry that is malformed, private, conventional or listed twice."""
+    for entry in entries:
+        if not _PACKAGE_MODULE.fullmatch(entry):
+            msg = (
+                f"{pyproject}: 'package-modules' entry {entry!r} in [tool.headgate-verify] must be 'name.py' or "
+                "'<package>/name.py', lower-case, with no leading underscore (a private module needs no entry)"
+            )
+            raise ConfigError(msg)
+        if entry.rpartition("/")[2] in CONVENTIONAL_MODULES:
+            msg = (
+                f"{pyproject}: 'package-modules' entry {entry!r} in [tool.headgate-verify] is a module the "
+                "conventions name"
+            )
+            raise ConfigError(msg)
+    duplicates = sorted({entry for entry in entries if entries.count(entry) > 1})
+    if duplicates:
+        msg = f"{pyproject}: 'package-modules' in [tool.headgate-verify] lists {duplicates} more than once"
+        raise ConfigError(msg)
 
 
 def _rule_dirs(pyproject: Path, entries: list[str]) -> frozenset[str]:

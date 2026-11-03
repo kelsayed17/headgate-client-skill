@@ -46,6 +46,7 @@ Each rule names the verifier rule that checks it, where one does; [verifier.md](
   models.py             wire models, and a <Endpoint>Params TypedDict per endpoint's query; omitted when there is none
   pagination.py         pagers and page budgets, if the API pages; never a page loop
   docs_paths.json       the docs snapshot, inside the package so it ships in the wheel (declare it as package data)
+                        any other public module (no leading underscore) is declared in `package-modules`
   tests/                (or tests/<provider>/ beside the package, or under the project root)
     test_client.py      offline tests through the real headgate stack (or test_client_<host>.py, one per host)
     test_method_names.py  the naming test
