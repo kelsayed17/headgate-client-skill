@@ -7,6 +7,10 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- `package-layout` reads a package's real shape: the client test may be one file per host (`test_client_<host>.py`, any
+  file named `test_client_*.py`) beside `test_method_names.py`, and `models.py` is required only when the package
+  declares a model (a `Struct` or `BaseModel` class in another module, subscripted or not; a bare `TypedDict` does not count, or an import from `models`), so a
+  client that returns raw bytes needs none. `docs_paths.json` stays inside the package, where it ships as package data.
 - A project rule (and any rule file) may carry `packages: [name, …]`: it runs only in the packages whose directory is
   named, rather than in every client package. The list must be non-empty; a rule with both `packages` and
   `skip-packages-in` runs where both allow it.

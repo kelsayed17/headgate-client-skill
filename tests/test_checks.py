@@ -58,6 +58,9 @@ _CLAUSES: dict[str, tuple[str, int]] = {
     "package-layout/fail/init_reexports": ("__init__.py holds a docstring only", 2),
     "package-layout/fail/init_no_docstring": ("__init__.py holds no docstring", 1),
     "package-layout/fail/no_models": ("has no models.py", 1),
+    "package-layout/fail/models_defined_in_client": ("has no models.py", 1),
+    "package-layout/fail/models_subscripted_base": ("has no models.py", 1),
+    "package-layout/fail/models_package_import": ("has no models.py", 1),
     "package-layout/fail/no_docs_paths": ("has no docs_paths.json", 1),
     "package-layout/fail/docs_paths_invalid_json": (
         "docs_paths.json is not a valid docs snapshot: the file is not valid JSON",
@@ -68,6 +71,7 @@ _CLAUSES: dict[str, tuple[str, int]] = {
     "package-layout/fail/no_tests_dir": ("has no tests directory", 1),
     "package-layout/fail/tests_missing_method_names": ("has no test_method_names.py", 1),
     "package-layout/fail/tests_missing_client_tests": ("has no test_client.py", 1),
+    "package-layout/fail/tests_lookalike_client_tests": ("has no test_client.py", 1),
     "package-layout/fail/paginate_without_pagination": ("calls self.paginate but has no pagination.py", 1),
     "one-flavour/fail/mixed": ("imports both flavours", 1),
     "one-flavour/fail/mixed_headgate_submodule_import": ("imports both flavours", 1),
