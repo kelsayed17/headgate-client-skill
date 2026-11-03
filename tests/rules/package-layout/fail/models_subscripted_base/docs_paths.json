@@ -1,0 +1,1 @@
+{"source": "https://api.example/openapi.json", "retrieved": "2026-10-26", "reason": null, "endpoints": [{"verb": "GET", "path": "/v1/things"}]}

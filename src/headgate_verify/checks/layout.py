@@ -7,10 +7,10 @@ Reported:
 
 * no ``__init__.py``; an ``__init__.py`` holding no docstring; any statement in it after the docstring (a re-export,
   an ``__all__``, an import), one finding per statement. Comments are allowed;
-* no ``models.py`` in a package that declares a model: a class based on ``Struct``, ``BaseModel`` or ``TypedDict``
-  defined in a module other than ``models.py``, or an import from a ``models`` module. A package with no model (a
-  client that returns raw bytes or nothing) needs none. No ``docs_paths.json``: it sits in the package, so it ships
-  in the wheel as package data;
+* no ``models.py`` in a package that declares a model: a class based on ``Struct`` or ``BaseModel`` (a bare
+  ``TypedDict`` does not count) defined in a module other than ``models.py``, or an import from a ``models`` module.
+  A package with no model (a client that returns raw bytes or nothing) needs none. No
+  ``docs_paths.json``: it sits in the package, so it ships in the wheel as package data;
 * a ``docs_paths.json`` that is not valid JSON or breaks the docs snapshot schema (``headgate_verify.naming``), at its
   line 1. Whether the client's names follow it is the client's own ``test_method_names.py``'s business;
 * no tests directory holding both a client test and ``test_method_names.py``. A client test is ``test_client.py`` or
@@ -53,9 +53,9 @@ _INIT = "__init__.py"
 _DOCS = "docs_paths.json"
 _MODELS = "models.py"
 _REQUIRED = (_DOCS,)
-_CLIENT_TESTS = "test_client*.py"
+_CLIENT_TESTS = ("test_client.py", "test_client_*.py")
 _METHOD_NAMES = "test_method_names.py"
-_MODEL_BASES = ("Struct", "BaseModel", "TypedDict")
+_MODEL_BASES = ("Struct", "BaseModel")
 _PAGINATION = "pagination.py"
 
 
@@ -96,20 +96,26 @@ def _check_init(pkg: Package, modules: Modules) -> list[Finding]:
     return findings
 
 
+def _imports_models(statement: SgNode) -> bool:
+    module = statement.field("module_name")
+    if module is not None and module.text().rsplit(".", 1)[-1] == "models":
+        return True
+    names = [child for child in statement.children() if child.kind() in ("dotted_name", "aliased_import")]
+    return any(child.text().split()[0].split(".")[0] == "models" for child in names if child != module)
+
+
+def _is_model_base(base: SgNode) -> bool:
+    return base.text().split("[", 1)[0].rsplit(".", 1)[-1] in _MODEL_BASES
+
+
 def _declares_model(pkg: Package, modules: Modules) -> bool:
-    """Return whether a module besides ``models.py`` defines a model class or imports from a ``models`` module."""
+    """Return whether a module besides ``models.py`` defines a model class or imports from ``models``."""
     for path, root in modules.items():
         if path == pkg.root / _MODELS:
             continue
-        for statement in root.root().find_all(kind="import_from_statement"):
-            module = statement.field("module_name")
-            if module is not None and module.text().rsplit(".", 1)[-1] == "models":
-                return True
-        if any(
-            base.text().rsplit(".", 1)[-1] in _MODEL_BASES
-            for _, node, _ in classes({path: root})
-            for base in bases(node)
-        ):
+        if any(_imports_models(statement) for statement in root.root().find_all(kind="import_from_statement")):
+            return True
+        if any(_is_model_base(base) for _, node, _ in classes({path: root}) for base in bases(node)):
             return True
     return False
 
@@ -142,8 +148,12 @@ def _test_dirs(pkg: Package) -> list[Path]:
     return list(dict.fromkeys(candidates))
 
 
+def _client_tests(directory: Path) -> bool:
+    return any(path.is_file() for pattern in _CLIENT_TESTS for path in directory.glob(pattern))
+
+
 def _has_tests(directory: Path) -> bool:
-    return any(directory.glob(_CLIENT_TESTS)) and (directory / _METHOD_NAMES).is_file()
+    return _client_tests(directory) and (directory / _METHOD_NAMES).is_file()
 
 
 def _check_tests(pkg: Package) -> list[Finding]:
@@ -158,7 +168,7 @@ def _check_tests(pkg: Package) -> list[Finding]:
     return [
         _missing(pkg, f"the tests directory {directory} has no {name}")
         for name, present in (
-            ("test_client.py (or a test_client_<host>.py per host)", any(directory.glob(_CLIENT_TESTS))),
+            ("test_client.py (or a test_client_<host>.py per host)", _client_tests(directory)),
             (_METHOD_NAMES, (directory / _METHOD_NAMES).is_file()),
         )
         if not present
