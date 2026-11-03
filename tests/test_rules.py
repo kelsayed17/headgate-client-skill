@@ -120,6 +120,35 @@ def test_skip_packages_in_exempts_a_package_by_name(tmp_path: Path) -> None:
         rule_from_yaml(_FILLER_RULE.replace("rule:", "skip-packages-in: no_such_field\nrule:"), "filler-name")
 
 
+def test_packages_scopes_a_rule_to_the_named_packages(tmp_path: Path) -> None:
+    """A rule with ``packages: [name, …]`` runs only in a package whose directory is named; others are untouched."""
+    for name in ("alpha", "beta", "gamma"):
+        write(tmp_path / name, "client.py", "api = 1\n")
+    pkgs = find_packages([tmp_path])
+    rule = rule_from_yaml(_FILLER_RULE.replace("rule:", "packages: [alpha, gamma]\nrule:"), "filler-name")
+    found = [finding for pkg in pkgs for finding in _run(pkg, rule, Config())]
+    assert sorted(finding.path.parent.name for finding in found) == ["alpha", "gamma"]
+
+
+def test_packages_beside_skip_packages_in_both_apply(tmp_path: Path) -> None:
+    """A package must be named by ``packages`` and not by ``skip-packages-in`` for the rule to run in it."""
+    for name in ("alpha", "beta"):
+        write(tmp_path / name, "client.py", "api = 1\n")
+    pkgs = find_packages([tmp_path])
+    header = "packages: [alpha, beta]\nskip-packages-in: browser_user_agent_packages\nrule:"
+    rule = rule_from_yaml(_FILLER_RULE.replace("rule:", header), "filler-name")
+    config = Config(browser_user_agent_packages=frozenset({"beta"}))
+    found = [finding for pkg in pkgs for finding in _run(pkg, rule, config)]
+    assert [finding.path.parent.name for finding in found] == ["alpha"]
+
+
+@pytest.mark.parametrize("packages", ["alpha", "[1]", "[]", "{a: b}", "~", "['']"])
+def test_packages_must_be_a_list_of_names(packages: str) -> None:
+    """``packages`` is a non-empty list of package names; an empty list would silently disable the rule."""
+    with pytest.raises(ValueError, match="packages"):
+        rule_from_yaml(_FILLER_RULE.replace("rule:", f"packages: {packages}\nrule:"), "filler-name")
+
+
 def test_unparseable_file_is_a_finding(tmp_path: Path) -> None:
     """An unparseable module is one parse-error finding and nothing else; the modules beside it are still checked."""
     client = write(tmp_path, "client.py", "def (:\n")

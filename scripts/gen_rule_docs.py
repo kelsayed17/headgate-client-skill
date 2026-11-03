@@ -156,6 +156,11 @@ file that is not valid YAML, a rule ast-grep refuses, a `.yaml` file (rules are 
 before any package is read. Rules are read on every run. Test a project rule as the shipped ones are tested: a
 package per case, checked with `headgate_verify.engine.verify(paths, load_config(root))`.
 
+A project rule may carry `packages: [name, …]`, the names of the directories that hold a `client.py`; it then runs only
+in those packages, so a rule written for one provider's quirk does not run, idle, in every other. The list must be
+non-empty. (The shipped rules' `skip-packages-in` is the negative form, read from a config key.) A rule's `files`
+globs are relative to the package root, as before.
+
 `one-flavour` reads a different file: the `pyproject.toml` nearest the checked **package**, for the headgate extra
 its flavour needs.
 
