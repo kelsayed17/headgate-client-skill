@@ -7,6 +7,9 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- A project rule (and any rule file) may carry `packages: [name, …]`: it runs only in the packages whose directory is
+  named, rather than in every client package. The list must be non-empty; a rule with both `packages` and
+  `skip-packages-in` runs where both allow it.
 - `one-class-per-host` accepts a conditional `base_url`: `LIVE_URL if live else PAPER_URL`, two distinct module-level
   names on two hosts, for a client that serves the live and paper (or production and sandbox) host of one API. Both
   names count toward the other classes' distinct-host check, and an absolute URL on either host is the class's own. A
