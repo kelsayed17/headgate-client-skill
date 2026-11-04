@@ -1,4 +1,4 @@
-# R3: a reader function named directly is a lowercase name; bind it to an UPPER_CASE module name.
+# R3: a hand-written reader function the module defines is passed by its own name.
 def _placed_or_declined(resp: httpx2.Response, /) -> Order | Declined:
     return Declined()
 

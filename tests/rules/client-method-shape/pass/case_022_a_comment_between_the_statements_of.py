@@ -1,6 +1,5 @@
 # A comment BETWEEN the statements of each kind of leg is not a statement either.
 # Readers moved to module level (R3); the envelope legs are plain forwards here.
-TOOL_RESULT = decoder(ToolResult)
 
 
 Z = decoder(Z)
@@ -19,20 +18,20 @@ class InteriorClient(AsyncBaseClient):
     async def _doc_leg(self, s: str) -> Z:
         """A leg."""
         # the one request
-        return await self.get(t"w/{s}", expect=Z)
+        return await self.get(t"w/{s}", expect=decoder(Z))
 
     async def fetch_b(self) -> bytes:
         return await _fetch_doc(self, "b")
 
     async def _call_tool[T](self, name: str, arguments: Args, payload: type[T]) -> T:
         # the envelope, forwarded
-        return await self.post(t"tools/{name}", body=_WRITE(arguments), expect=TOOL_RESULT)
+        return await self.post(t"tools/{name}", body=_WRITE(arguments), expect=decoder(ToolResult))
 
     async def _call_doc[T](self, name: str, arguments: Args, payload: type[T]) -> T:
         """One tool."""
         # the envelope
         # forwarded
-        return await self.post(t"tools/{name}", body=_WRITE(arguments), expect=TOOL_RESULT)
+        return await self.post(t"tools/{name}", body=_WRITE(arguments), expect=decoder(ToolResult))
 
     async def get_accounts(self, arguments: NoArguments) -> AccountsPayload:
         return await self._call_tool("get_accounts", arguments, AccountsPayload)

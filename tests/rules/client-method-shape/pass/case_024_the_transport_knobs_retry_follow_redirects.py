@@ -24,8 +24,8 @@ class Knobs(AsyncBaseClient):
             timeout=timeout,
             follow_redirects=False,
             cache_ttl=cache_ttl,
-            expect=X,
+            expect=decoder(X),
         )
 
     async def get_y(self) -> Y:
-        return await self.get("y", retry=True, timeout=_SHORT, follow_redirects=True, expect=Y)
+        return await self.get("y", retry=True, timeout=_SHORT, follow_redirects=True, expect=decoder(Y))

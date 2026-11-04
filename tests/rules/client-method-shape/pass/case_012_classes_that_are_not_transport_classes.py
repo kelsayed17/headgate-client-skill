@@ -35,9 +35,9 @@ def house_fd_xml_path(year: int) -> Template:
 
 class HostClient(AsyncBaseClient):
     async def get_x(self) -> X:
-        return await self.get("x", expect=X)
+        return await self.get("x", expect=decoder(X))
 
     # a comment between two methods is not a statement
 
     async def get_y(self) -> Y:
-        return await self.get("y", expect=Y)
+        return await self.get("y", expect=decoder(Y))

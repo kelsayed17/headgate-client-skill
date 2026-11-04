@@ -1,6 +1,5 @@
 # A walk of POSTs with a public writer, as `body=` takes one (`body=NEW_ORDER(order)`), and the knobs a walk of POSTs
 # may still take.
-X_PAGE = decoder(XPage)
 
 
 class Walks(AsyncBaseClient):
@@ -9,7 +8,7 @@ class Walks(AsyncBaseClient):
             PageRequest("x", body=request, write=QUERY_REQUEST),
             timeout=timeout,
             retry=False,
-            expect=X_PAGE,
+            expect=decoder(XPage),
             pages=X_PAGES,
             limit=PAGE_LIMIT,
         )

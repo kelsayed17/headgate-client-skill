@@ -7,12 +7,14 @@ All notable changes to this project are recorded here. The format follows
 
 ### Changed
 
-- `client-method-shape` (R3) accepts a plain type reader at the call: `expect=decoder(<type>)` or
-  `expect=adapter(<type>)` with one positional type expression (a CapWords or builtin name, a dotted model, a
-  subscript, a `|` union) and no keyword. A name only repeated the type, and the client's tests already call every
-  method, so the import-time failure it bought was redundant. A reader with an option (`strict=False`,
-  `allow_empty_body=`, `refusal_check=`), a documented answer (`Expect(...)`, `.on(...)`), and a reader of a
-  parameter, a local or a call are still named at module level and reported inline.
+- `client-method-shape` (R3): a reader is written at the call, never as a module-level name. `expect=` takes
+  `decoder(<type>)` / `adapter(<type>)` (keywords allowed), `body_reader(...)`, an `Expect(<reader>)` root of one
+  argument (positional or `ok=`) and its `.on(...)` chain, `nothing` / `as_bytes`, or a `_` reader function the module
+  defines. An UPPER_CASE reader name (`expect=FILING`) is now reported; a name only repeated its type, and a client's
+  tests call every method, so the import-time failure it bought was redundant. The type in `decoder`/`adapter` is a
+  type expression: a reader of a parameter, a local or a call is reported, as is an `Expect` root of two arguments or
+  wrapping a named reader. The constructor-call clause no longer reads `expect=`, which R3 governs. Both examples, the
+  conventions page and `SKILL.md` write readers at the call.
 
 ### Added
 

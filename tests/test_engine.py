@@ -69,7 +69,6 @@ from .models import Item
 
 BASE_URL = "https://data.example"
 MAX_RATE_PER_SEC = 2
-ITEM = decoder(Item)
 
 
 class LdaClient(AsyncBaseClient):
@@ -80,7 +79,7 @@ class LdaClient(AsyncBaseClient):
 
     async def get_item(self, item_id: str) -> Item:
         \"\"\"``GET /item/{item_id}`` -- the item.\"\"\"
-        return await self.get(t"item/{item_id}", expect=ITEM)
+        return await self.get(t"item/{item_id}", expect=decoder(Item))
 
 
 def to_int(text: str) -> int | None:
@@ -106,7 +105,7 @@ def test_warning_severity_reported(tmp_path: Path, capsys: pytest.CaptureFixture
         write(tmp_path / "tests" / "lda", name)
     findings = verify([package])
     assert [(finding.rule, finding.severity, finding.line) for finding in findings] == [
-        ("client-except-needs-review", "warning", 26),
+        ("client-except-needs-review", "warning", 25),
     ], findings
     assert cli.main([str(package)]) == 0
     assert "client-except-needs-review" in capsys.readouterr().out

@@ -1,4 +1,4 @@
-# R3: a documented answer declared at the call; it is declared at module level, beside the reader it extends.
+# R3: a reader named at module level is reported inside an Expect root too: every reader is written at the call.
 FOO = decoder(Foo)
 
 

@@ -3,7 +3,6 @@ from headgate import RetryPolicy
 
 from .policies import RETRY_EVERY_METHOD
 
-ORDER = decoder(Order)
 ORDER_RETRY = RetryPolicy(attempts=1)
 
 
@@ -12,4 +11,4 @@ class C(AsyncBaseClient):
         return await self.post("x", expect=as_bytes, retry=RETRY_EVERY_METHOD)
 
     async def place_order(self, order: NewOrder) -> Order:
-        return await self.post("orders", body=NEW_ORDER(order), expect=ORDER, retry=ORDER_RETRY)
+        return await self.post("orders", body=NEW_ORDER(order), expect=decoder(Order), retry=ORDER_RETRY)
