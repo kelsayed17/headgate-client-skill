@@ -95,20 +95,25 @@ keeps them in one package, one class per host (the Open-Meteo example).
 
 ## Module-level values
 
-Everything a method passes besides its own arguments is built once, at import, at module level, so a bad declaration
-fails when the module loads, not on the first call:
+Everything a method passes besides its own arguments and a plain type reader is built once, at import, at module
+level, so a bad declaration fails when the module loads, not on the first call:
 
 ```python
-FILINGS = decoder(Page[Filing])  # a reader
-FILING = decoder(Filing)
-FILING_OR_NONE = Expect(FILING).on(HTTPStatus.NOT_FOUND, nothing)  # a documented answer
+FILING_OR_NONE = Expect(decoder(Filing)).on(HTTPStatus.NOT_FOUND, nothing)  # a documented answer
+LAX_QUOTE = decoder(Quote, strict=False)  # a reader with an option
 NEW_ORDER = encoder(NewOrderBody)  # a writer
 ORDER_RETRY = RetryPolicy(attempts=1)  # a non-idempotent write's retry policy
 ```
 
-Pagers and page budgets live in `pagination.py` (below). In a method, `expect=`, `pages=` and `limit=` are bare
-UPPER_CASE names the module binds; a call there (`expect=decoder(Filing)`, `expect=Expect(...)`) is reported by
-`client-method-shape`. headgate's own `nothing` and `as_bytes` may be passed to `expect=` by name. `retry=` and
+A plain type reader, `decoder(<type>)` or `adapter(<type>)` with no option, is written at the call
+(`expect=decoder(Page[Filing])`): a name would only repeat the type, and the client's tests call every method, so a
+type the codec cannot read still fails before release. A reader that decides something about the answer is named:
+a documented answer (`Expect(...)`, `.on(...)`), an option (`strict=False`, `allow_empty_body=`, `refusal_check=`).
+
+Pagers and page budgets live in `pagination.py` (below). In a method, `pages=` and `limit=` are bare UPPER_CASE names
+the module binds, and `expect=` is such a name or a plain type reader; any other call there (`expect=Expect(...)`,
+`expect=decoder(Quote, strict=False)`, `expect=decoder(model)`) is reported by `client-method-shape`. headgate's own
+`nothing` and `as_bytes` may be passed to `expect=` by name. `retry=` and
 `deadline=` take such a name, a literal or a parameter of the method; `timeout=` takes such a name or a parameter
 (headgate takes a `Timeouts`, so one built at the call is a module constant instead). Path constants are module-level too, never class attributes (`client-path-constants-at-module-level`); a name
 ending `_URL` holds an absolute URL, a relative one ends `_PATH` (`client-url-suffix-means-absolute`).

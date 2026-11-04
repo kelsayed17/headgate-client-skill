@@ -1,5 +1,5 @@
 # A module leg on each verb.
-# R3: the source's inline reader; `expect=` is a module-level name here.
+# R3: the same shape with its reader written at the call, `expect=decoder(Type)`, which is a plain type reader.
 async def _post(client: AsyncBaseClient, path: str) -> Ack:
     return await client.post(path, expect=decoder(Ack))
 

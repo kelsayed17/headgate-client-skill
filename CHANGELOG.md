@@ -5,6 +5,15 @@ All notable changes to this project are recorded here. The format follows
 
 ## [0.1.0] - Unreleased
 
+### Changed
+
+- `client-method-shape` (R3) accepts a plain type reader at the call: `expect=decoder(<type>)` or
+  `expect=adapter(<type>)` with one positional type expression (a CapWords or builtin name, a dotted model, a
+  subscript, a `|` union) and no keyword. A name only repeated the type, and the client's tests already call every
+  method, so the import-time failure it bought was redundant. A reader with an option (`strict=False`,
+  `allow_empty_body=`, `refusal_check=`), a documented answer (`Expect(...)`, `.on(...)`), and a reader of a
+  parameter, a local or a call are still named at module level and reported inline.
+
 ### Added
 
 - `package-layout` reports a public top-level module of a client package that the conventions do not name

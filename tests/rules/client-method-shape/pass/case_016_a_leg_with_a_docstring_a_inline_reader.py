@@ -1,5 +1,5 @@
 # A leg with a docstring; a module leg without one; a `**kwargs: Any` pass-through is not a collector.
-# R3: the source's inline reader; `expect=` is a module-level name here.
+# R3: the same shape with its reader written at the call, `expect=decoder(Type)`, which is a plain type reader.
 async def _fetch_feed(client: AsyncBaseClient, path: str) -> bytes:
     return await client.get(path, expect=as_bytes)
 

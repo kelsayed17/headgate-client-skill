@@ -1,5 +1,5 @@
 # Classes that are not transport classes, anywhere in the module.
-# R3: the source's inline reader; `expect=` is a module-level name here.
+# R3: the same shape with its reader written at the call, `expect=decoder(Type)`, which is a plain type reader.
 class AsgiApp(Protocol):
     async def __call__(self, scope: Any, receive: Any, send: Any) -> None: ...
 

@@ -1,5 +1,5 @@
 # put and patch forwards; an untyped parameter and an untyped default forwarded as bodies.
-# R3: the source's inline reader; `expect=` is a module-level name here.
+# R3: the same shape with its reader written at the call, `expect=decoder(Type)`, which is a plain type reader.
 class AlpacaTradingClient(AsyncBaseClient):
     async def replace_order(self, order_id: str, body=None) -> Order:
         return await self.patch(t"v2/orders/{order_id}", json=body, expect=decoder(Order), retry=False)

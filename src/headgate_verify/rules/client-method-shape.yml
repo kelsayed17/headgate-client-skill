@@ -68,12 +68,17 @@
 # a module constant, fixed at import. `timeout` is a parameter or such a name only: headgate takes a `Timeouts`, never
 # a number, and a `Timeouts(...)` built at the call is a value computed per call, so it is a module constant.
 #
-# `expect=` (R3) is a bare UPPER_CASE name, public or `_`-prefixed, that the module binds at module level (an
-# assignment, annotated or not, or an import, aliased or not), or one of headgate's own readers `nothing` and
-# `as_bytes`. Readers are module-level values built at import, so a bad declaration fails at import, not on the
-# first call: `decoder(Foo)`, `Expect(...)`, `Expect(FOO).on(...)` or any other call there is reported, as is a
-# lowercase or dotted name, or an UPPER_CASE name the module does not bind (a parameter, a local). `head()` may omit
-# `expect=` (headgate reads `nothing` then). This rule does not check that the name IS a reader: client-method-returns
+# `expect=` (R3) is one of three things. (1) A plain type reader written at the call: `decoder(<type>)` or
+# `adapter(<type>)` with one positional argument and no keyword, the argument a type expression (a CapWords or builtin
+# name, a dotted model, a subscript, a `|` union) with no call in it. Such a reader says nothing a name would add, and
+# the client's tests call every method, so a type msgspec cannot read still fails before release. (2) A bare
+# UPPER_CASE name, public or `_`-prefixed, that the module binds at module level (an assignment, annotated or not, or
+# an import, aliased or not). (3) One of headgate's own readers `nothing` and `as_bytes`. Every other reader is named
+# at module level, because what it adds is a decision about the answer and the name is where that decision is read:
+# `Expect(...)`, `Expect(FOO).on(...)`, a reader built with an option (`decoder(Foo, strict=False)`,
+# `allow_empty_body=`, `refusal_check=`), a reader of a parameter or a local (`decoder(model)`) or of a call, and any
+# other call there is reported, as is a lowercase or dotted name, or an UPPER_CASE name the module does not bind.
+# `head()` may omit `expect=` (headgate reads `nothing` then). This rule does not check that the name IS a reader: client-method-returns
 # is what catches a non-reader UPPER_CASE name (such as `BASE_URL`) passed as `expect=`.
 #
 # Each REQUEST keyword is FORWARDED, where "a request parameter" means a parameter NAME of the method (not a type in
@@ -131,8 +136,9 @@
 # one of the forms above.
 #
 # PORTED from the source rule of the same name, with these changes:
-#   * `expect=` (R3) must be a bare UPPER_CASE module-level name (or `nothing`/`as_bytes`); the source accepted
-#     `decoder(...)` and a one-argument `Expect(...)` chain inline, and left the reader to client-method-returns;
+#   * `expect=` (R3) takes a plain `decoder(<type>)`/`adapter(<type>)` inline but names every other reader at module
+#     level; the source also accepted a one-argument `Expect(...)` chain inline, and left the reader to
+#     client-method-returns;
 #   * the JSON-RPC envelope leg (one provider's shape: a leg that built one `MCPToolCall` and forwarded it) is gone,
 #     so an envelope leg no longer conforms;
 #   * a walk (e) takes paginate's own keywords and needs `limit=` as well as `pages=` (the source required neither
@@ -182,7 +188,8 @@ severity: error
 message: a public client method is one forward of the request it was handed, or exempted with a reason
 note: >-
   One public method is one endpoint: a single `return await self.<verb>(path, params=params, expect=READER)`
-  forwarding its parameters, its reader a module-level UPPER_CASE name; a paged GET is a sync def returning
+  forwarding its parameters, its reader a plain `decoder(Type)` or a module-level UPPER_CASE name (a reader with an
+  option or a documented answer is always named); a paged GET is a sync def returning
   `self.paginate(path, expect=READER, pages=PAGES, limit=MAX_PAGES)`, a walk of POSTs passing
   `PageRequest(path, body=request, write=WRITER)` as the path; a download is an async def whose one statement is
   `async with self.stream(path) as s:` over `async for c in s.aiter_bytes(): yield c`. Composition, deciding what an
@@ -277,10 +284,35 @@ utils:
     all:
       - {kind: identifier, regex: '^_?[A-Z][A-Z0-9_]*$', pattern: $READER}
       - inside: {kind: module, stopBy: end, has: {matches: module-binding}}
+  # `decoder(<type expression>)` / `adapter(<type expression>)` written at the call: one positional argument that is a
+  # name, a dotted name, a subscript or a `|` union, with no keyword argument and no call anywhere inside it. Every bare
+  # name in it is a type: CapWords, a builtin type, or the module before a dot (`models.Filing`). A lowercase name is
+  # a parameter or a local, so `decoder(payload)` is a reader built per call and is reported.
+  inline-type-reader:
+    kind: call
+    all:
+      - has: {field: function, kind: identifier, regex: '^(decoder|adapter)$'}
+      - has:
+          field: arguments
+          kind: argument_list
+          all:
+            - has: {nthChild: 1, any: [{kind: identifier}, {kind: attribute}, {kind: subscript}, {kind: binary_operator}]}
+            - not: {has: {nthChild: 2}}
+            - not: {has: {stopBy: end, kind: call}}
+            - not:
+                has:
+                  stopBy: end
+                  kind: identifier
+                  regex: '^[a-z_]'
+                  not:
+                    any:
+                      - {regex: '^(int|str|float|bool|bytes|list|dict|tuple|set|frozenset|object)$'}
+                      - {inside: {kind: attribute, field: object}}
   ok-reader:
     any:
       - {kind: identifier, regex: '^(nothing|as_bytes)$'}
       - matches: module-name
+      - matches: inline-type-reader
   bad-expect:
     kind: keyword_argument
     has: {field: name, regex: '^expect$'}

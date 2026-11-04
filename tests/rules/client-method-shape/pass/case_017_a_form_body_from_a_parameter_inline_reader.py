@@ -1,5 +1,5 @@
 # A form body from a parameter's to_builtins; a headers parameter forwarded as is.
-# R3: the source's inline reader; `expect=` is a module-level name here.
+# R3: the same shape with its reader written at the call, `expect=decoder(Type)`, which is a plain type reader.
 class SenateClient(AsyncBaseClient):
     async def search(self, request: SearchRequest) -> SearchPage:
         return await self.post("search/report/data/", data=to_builtins(request), expect=decoder(SearchPage))

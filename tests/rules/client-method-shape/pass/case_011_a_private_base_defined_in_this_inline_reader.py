@@ -1,5 +1,5 @@
 # A private base defined in this file, and concrete subclasses carrying only a private ClassVar.
-# R3: the source's inline reader; `expect=` is a module-level name here.
+# R3: the same shape with its reader written at the call, `expect=decoder(Type)`, which is a plain type reader.
 class _TradierBase(AsyncBaseClient):
     """The endpoint surface."""
 

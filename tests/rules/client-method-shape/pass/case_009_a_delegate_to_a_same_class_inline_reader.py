@@ -1,5 +1,5 @@
 # A delegate to a same-class private leg that is itself a direct forward (arm c).
-# R3: the source's inline reader; `expect=` is a module-level name here.
+# R3: the same shape with its reader written at the call, `expect=decoder(Type)`, which is a plain type reader.
 class Series(AsyncBaseClient):
     async def get_series_marts(self, **params: Unpack[SeriesParams]) -> SeriesResponse:
         return await self._series(t"marts", **params)

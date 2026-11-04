@@ -1,5 +1,5 @@
 # A private Protocol in a client module is not a transport class: its NAME starting `_` does not count.
-# R3: the source's inline reader; `expect=` is a module-level name here.
+# R3: the same shape with its reader written at the call, `expect=decoder(Type)`, which is a plain type reader.
 class _Sender(Protocol):
     def send(self, message: str) -> None: ...
 
