@@ -1,4 +1,4 @@
-# The source's fetch_/get_ naming clause (and its bytes/str alias clause) does not port: this passes here.
+# A module alias of `bytes` in the return: followed from the method.
 Raw = bytes
 
 

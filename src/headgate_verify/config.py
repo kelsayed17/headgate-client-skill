@@ -19,8 +19,9 @@ class PyprojectError(ValueError):
     """A ``pyproject.toml`` cannot be read, is not UTF-8 or is not valid TOML; the message names the file and why."""
 
 
-CALL_SHAPES: frozenset[str] = frozenset({"walk", "stream", "fetch"})
-"""The prefixes ``method-prefixes`` may list: a paged walk, a streamed body and a raw-bytes read."""
+CALL_SHAPES: frozenset[str] = frozenset({"walk", "stream"})
+"""The prefixes ``method-prefixes`` may list: a paged walk and a streamed body. A raw-bytes read has no prefix: a
+public method returns a decoded model (``client-method-returns``)."""
 
 
 CONVENTIONAL_MODULES = frozenset({"__init__.py", "client.py", "models.py", "pagination.py"})
@@ -41,8 +42,8 @@ class Config:
     """Package names allowed a browser-spoofing User-Agent."""
     filler_words: frozenset[str] = frozenset({"api", "locale", "us", "global", "markets", "market"})
     """Words ignored when comparing names."""
-    method_prefixes: frozenset[str] = frozenset({"walk", "stream", "fetch"})
-    """The call-shape prefixes (``walk_``, ``stream_``, ``fetch_``) a read may take in place of ``get_``."""
+    method_prefixes: frozenset[str] = CALL_SHAPES
+    """The call-shape prefixes (``walk_``, ``stream_``) a read may take in place of ``get_``."""
     package_modules: frozenset[str] = frozenset()
     """Public modules a client package may hold besides the conventional ones: ``name.py`` in every package,
     ``<package>/name.py`` in one."""

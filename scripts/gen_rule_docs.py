@@ -175,7 +175,7 @@ its flavour needs.
 A finding a reader has judged acceptable is exempted by a comment naming its rule and the reason:
 
 ```python
-async def download(self, report_id: str) -> bytes:  # headgate-verify: allow client-method-shape -- a streamed body
+async def get_report(self, report_id: str) -> Report:  # headgate-verify: allow client-method-shape -- two legs
 ```
 
 The comment covers a finding on its own line, or anywhere inside the `def` or `class` whose first line carries it. A

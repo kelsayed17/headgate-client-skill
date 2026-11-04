@@ -1,6 +1,6 @@
-# #1401's test_a_documented_answer_marker_does_not_change_the_wire_shape, the passing half: the marker after
-# the raw arm still reads raw.
-# The same case with its readers moved to module level (R3).
+# #1401's documented-answer marker after the raw arm (`bytes | NotPublished`), which the source passed: a raw
+# return, and a `fetch_` name.
+# Its reader at module level.
 AS_BYTES_404_NOT_PUBLISHED = Expect(as_bytes).on(404, decoder(NotPublished))
 
 

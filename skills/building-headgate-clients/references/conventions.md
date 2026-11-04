@@ -108,7 +108,7 @@ ORDER_RETRY = RetryPolicy(attempts=1)  # a non-idempotent write's retry policy
 
 Pagers and page budgets live in `pagination.py` (below). In a method, `expect=`, `pages=` and `limit=` are bare
 UPPER_CASE names the module binds; a call there (`expect=decoder(Filing)`, `expect=Expect(...)`) is reported by
-`client-method-shape`. headgate's own `nothing` and `as_bytes` may be passed to `expect=` by name. `retry=` and
+`client-method-shape`. headgate's own `nothing` (and, in a private leg, `as_bytes`) may be passed to `expect=` by name. `retry=` and
 `deadline=` take such a name, a literal or a parameter of the method; `timeout=` takes such a name or a parameter
 (headgate takes a `Timeouts`, so one built at the call is a module constant instead). Path constants are module-level too, never class attributes (`client-path-constants-at-module-level`); a name
 ending `_URL` holds an absolute URL, a relative one ends `_PATH` (`client-url-suffix-means-absolute`).
@@ -147,7 +147,11 @@ ending `_URL` holds an absolute URL, a relative one ends `_PATH` (`client-url-su
 - **A class calls only its own host.** A URL the API itself returns (a `next` link in a body) may be followed, as a
   pager does; an absolute URL literal or constant naming another host is reported (`one-class-per-host`).
 - **The return annotation names the decoded type**: `Filing`, `list[Constant]`, `Filing | None`. Never
-  `httpx2.Response`, `dict` or `Any` (`client-method-returns`).
+  `httpx2.Response`, `dict` or `Any`, and never a raw body: no union arm is `bytes` or `str` (or a module alias of
+  either, `NewType` included), so a public method never reads `expect=as_bytes`, and no method is named `fetch_`
+  (`client-method-returns`). A body the docs describe gets a model and a decoder; a CSV or PDF is decoded into one
+  too. The one exception is an answer that is no body at all, such as a CSRF token a handshake reads from the cookie
+  jar: it carries `# headgate-verify: allow client-method-returns -- <reason>` on its `def` line.
 - **A non-idempotent write names its retry policy** with `retry=`, a module-level `RetryPolicy` or a literal: a
   re-sent order is a second order. A method whose name holds one of `write-name-fragments` is such a write unless it
   is a `cancel_`/`preview_` (`client-order-writes-name-retry`).
