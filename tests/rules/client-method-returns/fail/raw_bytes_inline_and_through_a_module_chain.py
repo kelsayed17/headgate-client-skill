@@ -1,5 +1,5 @@
-# `as_bytes` returns `bytes`, inline or as the root of a module-level chain; the method's name is free (the source's
-# `fetch_` naming clause does not port: the naming check owns names).
+# `as_bytes` behind `-> bytes` and behind `-> bytes | None` (a module chain with a `nothing` answer): a raw return
+# whatever the method is named.
 from http import HTTPStatus
 
 RAW_OR_NONE = Expect(as_bytes).on(HTTPStatus.NOT_FOUND, nothing)

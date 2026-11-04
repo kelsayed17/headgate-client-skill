@@ -50,7 +50,7 @@ write-name-fragments = ["order", "redeem"]         # REPLACES the defaults (the 
 |---|---|---|
 | `browser-user-agent-packages` | `[]` | `client-browser-user-agent-only-where-allowed` |
 | `filler-words` | `["api", "global", "locale", "market", "markets", "us"]` | `check_names`, in the naming test |
-| `method-prefixes` | `["fetch", "stream", "walk"]` | `check_names`, in the naming test |
+| `method-prefixes` | `["stream", "walk"]` | `check_names`, in the naming test |
 | `package-modules` | `[]` | `package-layout` |
 | `post-reads` | `[]` | `client-order-writes-name-retry`, `check_names`, in the naming test |
 | `rule-dirs` | `[]` | the command: the project's own rules, run beside these |
@@ -76,7 +76,7 @@ its flavour needs.
 A finding a reader has judged acceptable is exempted by a comment naming its rule and the reason:
 
 ```python
-async def download(self, report_id: str) -> bytes:  # headgate-verify: allow client-method-shape -- a streamed body
+async def get_report(self, report_id: str) -> Report:  # headgate-verify: allow client-method-shape -- two legs
 ```
 
 The comment covers a finding on its own line, or anywhere inside the `def` or `class` whose first line carries it. A
@@ -158,10 +158,10 @@ prints it under the finding; `--format json` gives it as `fix`.
 | `client-except-names-a-tuple-constant` | Write `_UNREADABLE = (ValueError, KeyError)` at module level and `except _UNREADABLE:`. |
 | `client-except-needs-review` | Make the handler re-raise a `headgate.errors` type, or confirm the swallowed error is a documented answer, and record which with an allow comment carrying the reason. |
 | `client-impersonating-transport-owns-its-headers` | Pass default_headers=True and delete the hand-set browser headers: the handshake's browser version is whatever the rolling impersonate alias resolves to today. |
-| `client-method-returns` | `-> None` exactly when the call reads `nothing`; `bytes` first when it reads `as_bytes`; otherwise the decoded model, with `\| None` only when the reader declares a `nothing` answer. Never Optional, Any, object, a bare or primitive-valued dict, or a Response. |
+| `client-method-returns` | Return the decoded provider model, read through a `decoder(Model)` reader, with `\| None` only when the reader declares a `nothing` answer, and `-> None` exactly when the call reads `nothing`. Never raw `bytes` or `str` (or an alias of either), so never `expect=as_bytes`; never a `fetch_` name (a read is `get_`); never Optional, Any, object, a bare or primitive-valued dict, or a Response. A method whose answer is no body (a handshake's cookie token) takes `# headgate-verify: allow client-method-returns -- <reason>` on its `def` line. |
 | `client-method-shape` | One public method is one endpoint: a single `return await self.<verb>(path, params=params, expect=decoder(Type))` forwarding its parameters, its reader written at the call (`expect=decoder(Type)`, `expect=Expect(decoder(Type)).on(404, nothing)`), never a module-level reader name; a paged GET is a sync def returning `self.paginate(path, expect=decoder(Page), pages=PAGES, limit=MAX_PAGES)`, a walk of POSTs passing `PageRequest(path, body=request, write=WRITER)` as the path; a download is an async def whose one statement is `async with self.stream(path) as s:` over `async for c in s.aiter_bytes(): yield c`. Composition, deciding what an answer means and building the request belong above the client. |
 | `client-module-has-a-client` | The checks of client methods read a class only when it names `AsyncBaseClient` in its bases. Subclass it by that bare name (`from headgate import AsyncBaseClient`), not through an alias or a dotted path. |
-| `client-no-hand-rolled-page-loop` | Return `self.paginate(path, expect=READER, pages=PAGES, limit=MAX_PAGES)` from a sync method, with the pager (`NextUrl`, `Cursor`, `Offset`, `LinkHeader`) and the `PageLimit` as module-level values. |
+| `client-no-hand-rolled-page-loop` | Return `self.paginate(path, expect=decoder(Page), pages=PAGES, limit=MAX_PAGES)` from a sync method, with the pager (`NextUrl`, `Cursor`, `Offset`, `LinkHeader`) and the `PageLimit` as module-level values. |
 | `client-no-identity-user-agent` | The code that builds the client composes the identity (product token and contact) and passes it as `user_agent`. |
 | `client-no-placeholder-contact` | The contact a User-Agent carries is deployment configuration passed to the client; no address, placeholder or real, belongs in source. |
 | `client-no-user-agent-beside-impersonation` | The handshake's browser version is whatever curl_cffi's rolling alias resolves to today; a UA written beside it is a second source of truth that goes stale on the next bump. Let default_headers=True supply it. |

@@ -1,5 +1,4 @@
-# The source's fetch_/get_ naming clause (and its bytes/str alias clause) does not port: this passes here.
-# A raw return under another verb (paper:468's `answer -> bytes`).
+# A raw return under another verb (paper:468's `answer -> bytes`), on a subclass of a private base.
 class _PaperEngineClient(AsyncBaseClient):
     """The construction seam; no routes."""
 

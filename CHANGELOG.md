@@ -18,6 +18,13 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- `client-method-returns` refuses a raw return: a public client method whose return annotation has a `bytes` or `str`
+  union arm (`builtins.bytes`, `typing.Text`, or a module alias of either, `NewType` and `type` statements included) is
+  an error wherever the arm sits (`bytes | NotPublished` too), and so is a `fetch_` name. A public method returns the
+  decoded provider model, so it never reads `expect=as_bytes`; a private leg still may. A method whose answer is no
+  body (a handshake's cookie token) takes the reasoned allow comment. Type arguments are not raw returns:
+  `AsyncIterator[bytes]` (a stream) and `list[str]` pass.
+
 - `package-layout` reports a public top-level module of a client package that the conventions do not name
   (`__init__`, `client`, `models`, `pagination`) and `package-modules` does not declare, at line 1 of that file, so an
   allow comment there exempts it. `[tool.headgate-verify] package-modules` lists `"name.py"` (allowed in every
@@ -34,8 +41,9 @@ All notable changes to this project are recorded here. The format follows
   names on two hosts, for a client that serves the live and paper (or production and sandbox) host of one API. Both
   names count toward the other classes' distinct-host check, and an absolute URL on either host is the class's own. A
   literal arm, a nested conditional, one name in both arms and two names on one host are reported.
-- `check_names` takes a method's call-shape prefix from its body: `walk_` for `self.paginate(...)`, `stream_` for
-  `self.stream(...)` and `fetch_` for a verb call with `expect=as_bytes`, through a one-level delegate too. `get_`
+- `check_names` takes a method's call-shape prefix from its body: `walk_` for `self.paginate(...)` and `stream_` for
+  `self.stream(...)`, through a one-level delegate too. There is no raw-body (`fetch_`) shape, and `method-prefixes`
+  rejects `fetch`. `get_`
   stays valid for every shape, and a `get_` and a `walk_` may read one path (a single page beside the whole walk), so a
   client keeps both without an override. `method-prefixes` in `[tool.headgate-verify]` lists the prefixes allowed
   (`[]` keeps every read `get_`), and `check_names` and `review_names` take `prefixes=`.

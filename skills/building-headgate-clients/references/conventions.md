@@ -107,8 +107,8 @@ a jump to the top of the module: `expect=decoder(Page[Filing])`, `expect=decoder
 `expect=body_reader(decode_feed)`, `expect=Expect(decoder(Filing)).on(HTTPStatus.NOT_FOUND, nothing)`. A name for one
 would only repeat its type, and the client's tests call every method, so a type the codec cannot read still fails
 before release. The type in `decoder(...)`/`adapter(...)` is a type expression, never a parameter or a local
-(`decoder(model)` is a reader built per call). headgate's own `nothing` and `as_bytes`, and a `_` reader function the
-module defines (`expect=_placed_or_declined`), are passed by name.
+(`decoder(model)` is a reader built per call). headgate's own `nothing` (and, in a private leg, `as_bytes`), and a `_` reader function
+the module defines (`expect=_placed_or_declined`), are passed by name.
 
 Pagers and page budgets live in `pagination.py` (below). In a method, `pages=` and `limit=` are bare UPPER_CASE names
 the module binds; a module-level reader name in `expect=` (`expect=FILING`) is reported by `client-method-shape`. `retry=` and
@@ -152,7 +152,11 @@ ending `_URL` holds an absolute URL, a relative one ends `_PATH` (`client-url-su
 - **A class calls only its own host.** A URL the API itself returns (a `next` link in a body) may be followed, as a
   pager does; an absolute URL literal or constant naming another host is reported (`one-class-per-host`).
 - **The return annotation names the decoded type**: `Filing`, `list[Constant]`, `Filing | None`. Never
-  `httpx2.Response`, `dict` or `Any` (`client-method-returns`).
+  `httpx2.Response`, `dict` or `Any`, and never a raw body: no union arm is `bytes` or `str` (or a module alias of
+  either, `NewType` included), so a public method never reads `expect=as_bytes`, and no method is named `fetch_`
+  (`client-method-returns`). A body the docs describe gets a model and a decoder; a CSV or PDF is decoded into one
+  too. The one exception is an answer that is no body at all, such as a CSRF token a handshake reads from the cookie
+  jar: it carries `# headgate-verify: allow client-method-returns -- <reason>` on its `def` line.
 - **A non-idempotent write names its retry policy** with `retry=`, a module-level `RetryPolicy` or a literal: a
   re-sent order is a second order. A method whose name holds one of `write-name-fragments` is such a write unless it
   is a `cancel_`/`preview_` (`client-order-writes-name-retry`).

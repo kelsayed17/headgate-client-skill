@@ -1,5 +1,5 @@
-# #1401's test_a_documented_answer_marker_does_not_change_the_wire_shape, the passing half: the marker after
-# the raw arm still reads raw.
+# #1401's documented-answer marker after the raw arm (`bytes | NotPublished`), which the source passed: a raw
+# return, and a `fetch_` name.
 class C(AsyncBaseClient):
     async def fetch_a(self) -> bytes | NotPublished:
         return await self.get("a", expect=Expect(as_bytes).on(404, decoder(NotPublished)))
