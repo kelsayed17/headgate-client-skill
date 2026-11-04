@@ -1,4 +1,5 @@
-# The client-method return type: it says what the call returns, and is never a raw Response.
+# The client-method return type: it says what the call returns, a decoded provider model, and is never a raw body or
+# a raw Response.
 #
 # SCOPE. Every module of the package. Reports:
 #
@@ -31,7 +32,17 @@
 #        `Expect(ok, answers=...)`, `Expect(nothing)`, `event_stream`, a status that is a name or a string, a lambda
 #        or a `self` method as a reader;
 #      * the reader is `as_bytes`, bare or as a chain's root, inline or through a module name, and the return's FIRST
-#        union arm is not `bytes` (`^bytes(\s*\|\s*[A-Z]\w*)*(\s*\|\s*None)?$`);
+#        union arm is not `bytes` (`^bytes(\s*\|\s*[A-Z]\w*)*(\s*\|\s*None)?$`). With the next clause no public
+#        method may read `as_bytes`: this one names the mismatch when the annotation claims a model the body never
+#        decodes (`-> Order` over `expect=as_bytes`, decoded by hand);
+#      * a RAW RETURN: any union arm of the annotation (the whole type, or a side of a `|` chain, never a type argument)
+#        is `bytes` or `str` (`builtins.bytes`, `builtins.str`, `typing.Text` too), or a name the module binds to one:
+#        `Raw = bytes`, `Raw: TypeAlias = bytes`, `type Raw = str`, `Raw = NewType("Raw", bytes)`. So
+#        `bytes | NotPublished`, `NotPublished | bytes` and `Raw | None` are all reported, and `AsyncIterator[bytes]`
+#        (a stream's chunks) and `list[str]` (a decoded array of strings) are not. A public method returns the decoded
+#        provider model: a raw body has no type for a caller, or a dataflow generator, to name;
+#      * a `fetch_` NAME (`fetch_` + anything, or `fetch` alone): the prefix named a raw-body read, which no longer
+#        exists, so a `fetch_` method is a `get_` read that returns its model;
 #      * the annotation, or the type a `decoder(...)` in the body decodes into, contains `Any`, `object`, `Optional`,
 #        a bare `dict` (`dict`, `list[dict]`), or a primitive-valued map (`dict`/`Mapping`/`MutableMapping` of
 #        `str`/`int`/`float`/`bool`/`bytes`, at any depth); or the annotation contains `None` other than as the whole
@@ -53,11 +64,20 @@
 #     (spec: a documented 404 declared as `Expect(READER).on(HTTPStatus.NOT_FOUND, nothing)`), so `T | None` is
 #     allowed exactly when the reader declares such an answer;
 #   * `head()` with no `expect=` reads `nothing` (headgate 0.6.0), so it is a void;
-#   * the `fetch_`/`get_` naming clause, and with it the `bytes`/`str` module-alias clause that served it, is dropped:
-#     the naming check owns method names, and a read is `get_<path>` whatever it returns;
+#   * the source tied `fetch_` to a raw `bytes`/`str` return and `get_` to a model, so raw `fetch_` twins of typed
+#     reads accumulated. Here no public method returns a raw body (the RAW RETURN clause) and `fetch_` is refused
+#     outright, so the source's verb/return pairing and its module-level `bytes`/`str` alias report are replaced by the
+#     raw-return check, which follows such an alias from the method that uses it;
 #   * the Response exemption adds `auth_flow` and headgate's `mint_flow` hook.
 #
+# THE ONE HONEST EXCEPTION is a method whose answer is not a body at all, such as a CSRF token read from the cookie
+# jar after a handshake (a Senate eFD client's `accept_prohibition_agreement -> str`). It takes the reasoned
+# allow comment above; there is no other exemption list. A token the provider sends as a body is decoded into a model.
+#
 # KNOWN GAPS, disclosed rather than hidden:
+#   * A raw alias IMPORTED from another module (`from .types import Raw`), or reached through two names
+#     (`A = bytes; B = A`), is not followed; `Text` imported bare from `typing` is not read as `str` (a model may be
+#     named `Text`), only `typing.Text`.
 #   * Two DIFFERENT decoder aliases, or two different reader functions, in one chain are rejected, loudly: the
 #     metavariable binds once per chain (`Expect(_A).on(404, _NOT_FOUND)`). Write the second as `decoder(...)` or
 #     share one alias.
@@ -76,9 +96,11 @@ language: python
 severity: error
 message: a public client method's return type says what the call returns, and never a raw Response
 note: >-
-  `-> None` exactly when the call reads `nothing`; `bytes` first when it reads `as_bytes`; otherwise the decoded model,
-  with `| None` only when the reader declares a `nothing` answer. Never Optional, Any, object, a bare or
-  primitive-valued dict, or a Response.
+  Return the decoded provider model, read through a `decoder(Model)` reader, with `| None` only when the reader
+  declares a `nothing` answer, and `-> None` exactly when the call reads `nothing`. Never raw `bytes` or `str` (or an
+  alias of either), so never `expect=as_bytes`; never a `fetch_` name (a read is `get_`); never Optional, Any, object,
+  a bare or primitive-valued dict, or a Response. A method whose answer is no body (a handshake's cookie token) takes
+  `# headgate-verify: allow client-method-returns -- <reason>` on its `def` line.
 utils:
   client-module:
     kind: module
@@ -246,6 +268,46 @@ utils:
       - kind: assignment
         inside: {kind: expression_statement, inside: {kind: module}}
         has: {field: right, any: [{kind: identifier}, {kind: attribute}, {kind: subscript}, {kind: binary_operator}], matches: alias-target}
+  # A raw body type, spelled out: `bytes`, `str`, `builtins.bytes`, `builtins.str`, `typing.Text`.
+  raw-type-name:
+    any:
+      - {kind: identifier, regex: '^(bytes|str)$'}
+      - {kind: attribute, regex: '^(builtins\.(bytes|str)|typing\.Text)$'}
+  # A module-level name bound to a raw body type: `Raw = bytes`, `Raw: TypeAlias = bytes`, `type Raw = str`,
+  # `Raw = NewType("Raw", bytes)`.
+  raw-alias:
+    all:
+      - {kind: identifier, pattern: $RAW_ALIAS}
+      - inside:
+          kind: module
+          stopBy: end
+          has:
+            any:
+              - kind: expression_statement
+                has:
+                  nthChild: 1
+                  kind: assignment
+                  all:
+                    - has: {field: left, kind: identifier, pattern: $RAW_ALIAS}
+                    - has:
+                        field: right
+                        any:
+                          - matches: raw-type-name
+                          - kind: call
+                            all:
+                              - has: {field: function, regex: '^(typing\.)?NewType$'}
+                              - has: {field: arguments, has: {nthChild: {position: 2, ofRule: {not: {kind: comment}}}, matches: raw-type-name}}
+              - kind: type_alias_statement
+                all:
+                  - has: {field: left, has: {kind: identifier, pattern: $RAW_ALIAS}}
+                  - has: {field: right, has: {matches: raw-type-name}}
+  # A union arm of a return type that is a raw body: the whole type or a side of a `|` chain, never a type argument
+  # (`AsyncIterator[bytes]` is a stream's chunks, `list[str]` a decoded array).
+  raw-arm:
+    any: [{matches: raw-type-name}, {matches: raw-alias}]
+    inside: {any: [{kind: type}, {kind: binary_operator}]}
+    not: {inside: {stopBy: end, any: [{kind: generic_type}, {kind: subscript}]}}
+  returns-raw: {kind: function_definition, has: {field: return_type, has: {stopBy: end, matches: raw-arm}}}
   bad-public-method:
     matches: public-method
     any:
@@ -263,6 +325,8 @@ utils:
       - all:
           - has: {field: body, has: {stopBy: end, matches: expect-as-bytes}}
           - not: {has: {field: return_type, regex: '^bytes(\s*\|\s*[A-Z]\w*)*(\s*\|\s*None)?$'}}
+      - matches: returns-raw
+      - has: {field: name, regex: '^fetch(_|$)'}
       - has: {field: return_type, matches: bad-type-text}
       - all:
           - has: {field: return_type, matches: none-arm}

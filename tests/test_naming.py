@@ -549,16 +549,13 @@ def _fetch(name: str, route: str) -> str:
 
 
 def test_each_call_shape_takes_its_own_prefix(tmp_path: Path) -> None:
-    """A paged read may be ``walk_``, a stream ``stream_`` and a raw-body read ``fetch_``; ``get_`` stays valid."""
+    """A paged read may be ``walk_`` and a stream ``stream_``; ``get_`` stays valid."""
     body = (
         _walk("walk_filings", '"v1/filings"')
         + _stream("stream_exports", '"v1/exports"')
-        + _fetch("fetch_reports", '"v1/reports"')
         + _walk("get_clients", '"v1/clients"')
     )
-    snapshot = _snapshot(
-        tmp_path, [("GET", "/v1/filings"), ("GET", "/v1/exports"), ("GET", "/v1/reports"), ("GET", "/v1/clients")]
-    )
+    snapshot = _snapshot(tmp_path, [("GET", "/v1/filings"), ("GET", "/v1/exports"), ("GET", "/v1/clients")])
     assert check_names(_client(tmp_path, body), snapshot) == []
 
 
@@ -631,13 +628,9 @@ def test_two_walks_on_one_path_keep_the_plain_name(tmp_path: Path) -> None:
     assert problem.startswith("walk_filings reads GET v1/filings and should be named get_filings")
 
 
-def test_a_fetch_is_read_through_a_delegate_and_a_module_attribute(tmp_path: Path) -> None:
-    """``expect=http.as_bytes`` and a delegate's ``expect=as_bytes`` both make a ``fetch``."""
-    body = (
-        '    async def fetch_reports(self) -> bytes:\n        return await self._raw("v1/reports")\n\n'
-        "    async def _raw(self, path: str) -> bytes:\n        return await self.get(path, expect=as_bytes)\n\n"
-        "    async def fetch_exports(self) -> bytes:\n"
-        '        return await self.get("v1/exports", expect=http.as_bytes)\n'
+def test_a_raw_body_read_takes_no_prefix(tmp_path: Path) -> None:
+    """``expect=as_bytes`` is no call shape: a public method returns a decoded model, so ``fetch_`` is a misnaming."""
+    (problem,) = check_names(
+        _client(tmp_path, _fetch("fetch_reports", '"v1/reports"')), _snapshot(tmp_path, [("GET", "/v1/reports")])
     )
-    snapshot = _snapshot(tmp_path, [("GET", "/v1/reports"), ("GET", "/v1/exports")])
-    assert check_names(_client(tmp_path, body), snapshot) == []
+    assert problem.startswith("fetch_reports reads GET v1/reports and should be named get_reports")

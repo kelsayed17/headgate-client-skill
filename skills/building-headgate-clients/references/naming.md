@@ -31,7 +31,7 @@ method is named from them. No word list is kept: every rule reads what the endpo
 - **The verb is the first word the endpoint does not state.** `listClients` on `/clients/` is `list` + `clients`;
   `StockLatestBars` on `/stocks/bars/latest` states every word, so it has no verb.
 - **A read** is `get_` and the id's words without its verb. The call-shape prefix is the caller's: a caller that
-  names walks `walk_` or raw bodies `fetch_` passes that prefix to `spec_name`, and the id's own read verb (`list`,
+  names walks `walk_` or streams `stream_` passes that prefix to `spec_name`, and the id's own read verb (`list`,
   `retrieve`, `fetch`) gives way to it. `check_names` passes it for you: see "Call-shape prefixes" below.
 - **A write** keeps the id's verb. When that verb only repeats the HTTP verb (`postOrder`), it takes the summary's
   first word instead ("Create an Order" gives `create_order`); a summary that starts with a stated word is a noun
@@ -73,8 +73,8 @@ a project with its own call shapes can name from the spec the same way.
 ### Call-shape prefixes
 
 A method may take the prefix of its body's call shape in place of `get_`, read from the body (through a one-level
-delegate too): `walk_` for `return self.paginate(...)`, `stream_` for `async with self.stream(...)` and `fetch_` for a
-verb call with `expect=as_bytes`. `get_` stays valid for every shape, so a client that names a paged read `get_clients`
+delegate too): `walk_` for `return self.paginate(...)` and `stream_` for `async with self.stream(...)`. There is no
+raw-body prefix: a public method returns a decoded model, and `client-method-returns` reports a `fetch_` name. `get_` stays valid for every shape, so a client that names a paged read `get_clients`
 needs no change. Two methods may read one path when their shapes differ, which is how a single page and the whole walk
 of one endpoint sit together:
 
@@ -84,8 +84,8 @@ def walk_filings(self, **params: Unpack[FilingParams]) -> Paginated[Filing]: ...
 ```
 
 Two methods of one shape on a path both keep the plain `get_` name (a `walk_` beside a `get_` that also paginates is reported), and an override that begins `get_` takes the prefixes like any derived name. So is a prefix that is not the method's own shape
-(`fetch_filings` over a `self.get` without `expect=as_bytes`). `method-prefixes` in `[tool.headgate-verify]` lists
-the prefixes a project allows (`walk`, `stream`, `fetch`); `[]` keeps every read `get_`.
+(`walk_filings` over a `self.get`). `method-prefixes` in `[tool.headgate-verify]` lists
+the prefixes a project allows (`walk`, `stream`); `[]` keeps every read `get_`.
 
 A read (a `GET`, or a method listed in `post_reads`) is named `get_` plus the literal words of its path
 (`endpoint_name`):

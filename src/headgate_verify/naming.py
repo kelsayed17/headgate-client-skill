@@ -288,7 +288,7 @@ def spec_name(
     """Return the name ``endpoint``'s ``operation_id`` gives its method, or why it gives none.
 
     ``endpoint`` is a documented endpoint carrying its spec's details. A read's name is ``prefix`` (the call shape:
-    ``get``, or a caller's ``walk``, ``fetch``, ``stream``) and the id's nouns, the id's own verb dropped; a write's
+    ``get``, or a caller's ``walk``, ``stream``) and the id's nouns, the id's own verb dropped; a write's
     is the id's verb and nouns, the verb from the summary when the id's only repeats the HTTP verb (``postOrder``,
     "Create an Order"). ``models`` are the client's return model names, which the endpoint states as well as its path
     and schemas; ``namespace`` is the spec's (``spec_namespace``), stripped from the id and the summary.
@@ -508,7 +508,7 @@ class _Methods:
     models: Mapping[str, tuple[str, ...]]
     """Each method's return model names: the capitalised names in its return annotation."""
     shapes: Mapping[str, str]
-    """Each method's call shape: ``walk``, ``stream``, ``fetch`` or ``get``."""
+    """Each method's call shape: ``walk``, ``stream`` or ``get``."""
 
 
 def _sort_methods(
@@ -736,8 +736,8 @@ def check_names(  # noqa: PLR0913 -- the documented signature: two files and fiv
     ``post_reads`` that is no method. Raise ``SnapshotError`` when the snapshot breaks its schema.
 
     A method takes the derived name, or the derived name with its call shape's prefix in place of ``get_``: ``walk_``
-    for a body that is ``self.paginate(...)``, ``stream_`` for ``self.stream(...)`` and ``fetch_`` for a verb call with
-    ``expect=as_bytes`` (read through a one-level delegate too). A prefix tells shapes apart, so two methods of one
+    for a body that is ``self.paginate(...)`` and ``stream_`` for ``self.stream(...)`` (read through a one-level
+    delegate too). A prefix tells shapes apart, so two methods of one
     shape on a path both keep the plain name. So ``get_filings`` and ``walk_filings`` may both read
     one path: a single page beside the whole walk. ``prefixes`` is the set of call-shape prefixes allowed.
 

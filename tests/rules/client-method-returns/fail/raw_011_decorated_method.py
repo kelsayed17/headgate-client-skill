@@ -1,4 +1,5 @@
-# The source's fetch_/get_ naming clause (and its bytes/str alias clause) does not port: this passes here.
+# A decorated public method is read too.
 class C(AsyncBaseClient):
+    @traced
     async def get_report(self) -> str:
         return await self.get("report", expect=decoder(str))

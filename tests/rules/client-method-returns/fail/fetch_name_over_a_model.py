@@ -1,4 +1,4 @@
-# The source's fetch_/get_ naming clause (and its bytes/str alias clause) does not port: this passes here.
+# A `fetch_` name over a decoded model: the prefix named a raw read, which is gone, so a read is `get_`.
 class C(AsyncBaseClient):
     async def fetch_quote(self) -> Quote:
         return await self.get("quote", expect=decoder(Quote))

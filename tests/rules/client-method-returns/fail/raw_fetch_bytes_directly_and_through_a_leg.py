@@ -1,4 +1,4 @@
-# The raw wire: fetch_ -> bytes, directly and through the rss module leg.
+# A raw `fetch_ -> bytes`, directly and through a module leg: a raw body and a `fetch_` name, both refused.
 async def _fetch_feed(client: AsyncBaseClient, path: str) -> bytes:
     return await client.get(path, expect=as_bytes)
 
