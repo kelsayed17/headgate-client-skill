@@ -18,6 +18,20 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- `headgate_verify.testing`, the test helpers any headgate client (and the worked examples) tests with, moved from
+  prism-clients and stripped of its providers. Install them with the `testing` extra (headgate with msgspec, pytest)
+  or `recording` (adds vcrpy and pytest-recording); importing `headgate_verify` never needs either. Each is a module:
+  `fidelity` (`findings` of wire keys no msgspec struct declares and declared fields no body fills, against an exact,
+  dated `_fidelity_baseline.toml`; `wire_names`), `manifest` (`Endpoint` and `manifest_drift`, the exhaustiveness
+  check both ways; a walk counts as an endpoint unless `include_walks=False`), `cassettes` (bodies a vcrpy cassette
+  recorded, by endpoint path), `recording` (`Recording(placeholders=, redact_keys=, scrub_body=, also_redact=,
+  keep_headers=, cassette_filter=)`, whose `vcr_config()` scrubs every credential handed out in every spelling, minted
+  tokens by key and every header but `Content-Type`, composing with headgate's `CassetteFilter`; the
+  `replay_credentials` and `no_retry_backoff` fixtures; `drive` and `recorded`), `creds` (credentials by
+  `(provider, field)` from an operator-named provider; a missing one skips) with `plugin` (`--credentials-provider`),
+  and `leaf_mock` (`install(client, MockHTTP())` for a client with no `transport=`). `references/testing.md`
+  describes them, and the lda example's `test_fidelity.py` uses the manifest and the fidelity walk.
+
 - `client-method-returns` refuses a raw return: a public client method whose return annotation has a `bytes` or `str`
   union arm (`builtins.bytes`, `typing.Text`, or a module alias of either, `NewType` and `type` statements included) is
   an error wherever the arm sits (`bytes | NotPublished` too), and so is a `fetch_` name. A public method returns the

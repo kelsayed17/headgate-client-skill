@@ -45,6 +45,20 @@ headgate-verify = "headgate_verify.cli:main"
 headgate-snapshot = "headgate_verify.spec:main"
 headgate-names = "headgate_verify.review:main"
 
+[project.optional-dependencies]
+# The client test helpers (`headgate_verify.testing`): the fidelity walk, the endpoint manifest, the leaf mock, the
+# cassette reader and the credentials provider.
+testing = [
+    "headgate[msgspec]>=0.8.0",
+    "pytest>=9.1",
+]
+# `headgate_verify.testing.recording`: vcrpy cassettes recorded live, scrubbed, and replayed offline.
+recording = [
+    "headgate-verify[testing]",
+    "pytest-recording>=0.14",
+    "vcrpy>=8.3",
+]
+
 [dependency-groups]
 dev = [
     "anyio>=4.15",
@@ -54,7 +68,15 @@ dev = [
     "ty",
     "headgate[msgspec,pydantic]>=0.8.0",
     "pytest-cov>=7.1.0",
+    "vcrpy>=8.3",
+    "pytest-recording>=0.14",
 ]
+
+[tool.uv]
+# hishel 2.0.0 (2026-11-05) dropped `BaseFilter`, which every headgate release through 0.11 imports while asking
+# only `hishel>=1.4.0`, so a fresh resolve (the lowest-direct CI job's) breaks `import headgate`. Drop this once
+# headgate caps hishel itself.
+constraint-dependencies = ["hishel<2"]
 
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib --strict-markers"
@@ -67,7 +89,7 @@ source = ["headgate_verify"]
 
 [tool.coverage.report]
 # The measured floor (lines and branches); raise it with coverage, never lower it.
-fail_under = 96.8
+fail_under = 97.6
 show_missing = true
 skip_covered = true
 

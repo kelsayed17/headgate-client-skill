@@ -1,0 +1,35 @@
+# What lda.gov's structs knowingly leave out, compared for exact equality by test_fidelity.py.
+# Every entry here is a field null in each body recorded on 2026-10-27: a recording that fills it closes it.
+
+[unexercised]
+"Client.client_government_entity" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"ContributionReport.address_2" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"ContributionReport.comments" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"ContributionReport.contact_name" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"Filing.expenses" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"Filing.expenses_method" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"Filing.expenses_method_display" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"Filing.income" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"Filing.registrant_ppb_country" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"Filing.termination_date" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"FilingClient.client_government_entity" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"Lobbyist.middle_name" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"Lobbyist.nickname" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"Lobbyist.prefix" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"Lobbyist.prefix_display" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"Lobbyist.suffix" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"Lobbyist.suffix_display" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"LobbyistWithRegistrant.middle_name" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"LobbyistWithRegistrant.nickname" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"LobbyistWithRegistrant.prefix" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"LobbyistWithRegistrant.prefix_display" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"LobbyistWithRegistrant.suffix" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"LobbyistWithRegistrant.suffix_display" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"Page[Client].previous" = { reason = "null on a first page; the walk's later pages are recorded only for lobbyists", date = "2026-11-05", kind = "fixture-gap" }
+"Page[ContributionReport].previous" = { reason = "null on a first page; the walk's later pages are recorded only for lobbyists", date = "2026-11-05", kind = "fixture-gap" }
+"Page[Filing].previous" = { reason = "null on a first page; the walk's later pages are recorded only for lobbyists", date = "2026-11-05", kind = "fixture-gap" }
+"Page[Registrant].previous" = { reason = "null on a first page; the walk's later pages are recorded only for lobbyists", date = "2026-11-05", kind = "fixture-gap" }
+"Registrant.address_2" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"Registrant.address_3" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"Registrant.address_4" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
+"Registrant.house_registrant_id" = { reason = "null in every recorded body", date = "2026-11-05", kind = "fixture-gap" }
