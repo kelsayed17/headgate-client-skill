@@ -72,6 +72,12 @@ dev = [
     "pytest-recording>=0.14",
 ]
 
+[tool.uv]
+# hishel 2.0.0 (2026-11-05) dropped `BaseFilter`, which every headgate release through 0.11 imports while asking
+# only `hishel>=1.4.0`, so a fresh resolve (the lowest-direct CI job's) breaks `import headgate`. Drop this once
+# headgate caps hishel itself.
+constraint-dependencies = ["hishel<2"]
+
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib --strict-markers"
 testpaths = ["tests", "examples"]
