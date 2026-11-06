@@ -15,6 +15,10 @@ All notable changes to this project are recorded here. The format follows
   type expression: a reader of a parameter, a local or a call is reported, as is an `Expect` root of two arguments or
   wrapping a named reader. The constructor-call clause no longer reads `expect=`, which R3 governs. Both examples, the
   conventions page and `SKILL.md` write readers at the call.
+- `client-method-shape`: `cache_ttl=` takes no bool. headgate types it `float | None` seconds, and `True` is an int, so
+  `cache_ttl=True` cached for one second and `cache_ttl=False` for none. A number, `None` or a parameter still passes;
+  `follow_redirects=` keeps taking a bool. Found by running prism-clients' `lint/rule_cases` invalid cases through
+  `headgate-verify` before that `lint/` is retired.
 
 ### Added
 

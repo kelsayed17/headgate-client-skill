@@ -60,9 +60,10 @@
 # (`Model(...)`, `httpx2.Timeout(...)`) anywhere in a keyword value other than `body=` and `expect=` (R3). Its keywords are only the ones
 # headgate 0.7.0's verbs take (`RequestOptions` plus the verb's own): `params`, `body`, `json`, `data`, `content`,
 # `files`, `headers`, `idempotency_key`, `expect`, `retry`, `timeout`, `deadline`, `follow_redirects` and
-# `cache_ttl` (not `auth=`, `cookies=`, `extensions=`, a typo, or paginate's `pages=`/`limit=`). The knobs
-# `follow_redirects` and `cache_ttl` are a literal or a parameter (so a per-call cache lifetime a method COMPUTES,
-# `cache_ttl=_year_ttl(year)`, is reported). `retry` is a literal, a parameter, or (R10) a bare UPPER_CASE name the
+# `cache_ttl` (not `auth=`, `cookies=`, `extensions=`, a typo, or paginate's `pages=`/`limit=`). The knob
+# `follow_redirects` is a literal or a parameter. `cache_ttl` is seconds (`float | None`): a number, `None` or a
+# parameter, never a bool (`True` is an int, a one-second lifetime) and never computed per call
+# (`cache_ttl=_year_ttl(year)` is reported). `retry` is a literal, a parameter, or (R10) a bare UPPER_CASE name the
 # module binds at module level, as `expect=` is: a `RetryPolicy` an executing write names is declared once
 # (`ORDER_RETRY = RetryPolicy(attempts=1)`), never built at the call. `deadline` may also be a bare UPPER_CASE name, public or `_`-prefixed:
 # a module constant, fixed at import. `timeout` is a parameter or such a name only: headgate takes a `Timeouts`, never
@@ -156,6 +157,8 @@
 #   * a stream (g) takes only the keywords a GET stream does, so `cache_ttl=`, which the source allowed and headgate's
 #     `stream` does not take, is reported; its item may be in one pair of parentheses, which the source reported; and
 #     the source's check that it sits in an async def is left to Python's parser, which made it inert;
+#   * `cache_ttl=` takes no bool, as in the source; a lifetime policy applied to the method's parameters
+#     (`cache_ttl=year_ttl(year)`), which the source passed, is reported, so such a method carries an allow comment;
 #   * the class clause names headgate 0.7.0's request methods instead of an in-tree base's old names (`_send`,
 #     `_fetch`, `_status_error`, `_client_error` mean nothing to headgate, so defining one is a private helper).
 #
@@ -418,7 +421,9 @@ utils:
         - has: {matches: built-keyword}
         - has: {matches: bad-expect}
         # The transport knobs are a literal or a parameter.
-        - has: {kind: keyword_argument, all: [{has: {field: name, regex: '^(follow_redirects|cache_ttl)$'}}, {not: {has: {field: value, any: [{kind: integer}, {kind: float}, {kind: 'true'}, {kind: 'false'}, {kind: 'none'}, {matches: param-ident}]}}}]}
+        - has: {kind: keyword_argument, all: [{has: {field: name, regex: '^follow_redirects$'}}, {not: {has: {field: value, any: [{kind: integer}, {kind: float}, {kind: 'true'}, {kind: 'false'}, {kind: 'none'}, {matches: param-ident}]}}}]}
+        # cache_ttl= is seconds (`float | None`): a bool is an int, so `cache_ttl=True` would cache for one second.
+        - has: {kind: keyword_argument, all: [{has: {field: name, regex: '^cache_ttl$'}}, {not: {has: {field: value, any: [{kind: integer}, {kind: float}, {kind: 'none'}, {matches: param-ident}]}}}]}
         # retry= may also name a module-level policy (R10), as an executing write is asked to.
         - has: {kind: keyword_argument, all: [{has: {field: name, regex: '^retry$'}}, {not: {has: {field: value, any: [{kind: integer}, {kind: float}, {kind: 'true'}, {kind: 'false'}, {kind: 'none'}, {matches: param-ident}, {matches: module-name}]}}}]}
         # deadline= may also be a bare UPPER_CASE name, a module constant fixed at import.
