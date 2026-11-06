@@ -56,6 +56,11 @@ dev = [
     "pytest-cov>=7.1.0",
 ]
 
+[tool.uv]
+# Every headgate release so far (0.8.0 to 0.12.0) declares hishel>=1.4.0 but imports hishel.BaseFilter, which
+# hishel 2.0.0 removed. Drop this cap once a headgate release supports hishel 2 or caps it itself.
+constraint-dependencies = ["hishel<2"]
+
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib --strict-markers"
 testpaths = ["tests", "examples"]
