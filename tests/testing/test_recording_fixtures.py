@@ -82,7 +82,7 @@ def test_the_plugin_adds_the_option_and_installs_the_provider() -> None:
     assert added == ["--credentials-provider", "credentials_provider"]
     previous = creds.use(None)
     try:
-        plugin.pytest_configure(Config(None, "os.path:join"))  # ty: ignore[invalid-argument-type]  # a duck config
+        plugin.pytest_configure(Config(None, "posixpath:join"))  # ty: ignore[invalid-argument-type]  # a duck config
         assert creds.lookup("a", "b") == "a/b"
         plugin.pytest_configure(Config(None, ""))  # ty: ignore[invalid-argument-type]  # a duck config
         assert creds.lookup("a", "b") is None
