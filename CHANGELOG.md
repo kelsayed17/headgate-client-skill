@@ -5,6 +5,17 @@ All notable changes to this project are recorded here. The format follows
 
 ## [0.1.0] - Unreleased
 
+### Changed
+
+- `client-method-shape` (R3): a reader is written at the call, never as a module-level name. `expect=` takes
+  `decoder(<type>)` / `adapter(<type>)` (keywords allowed), `body_reader(...)`, an `Expect(<reader>)` root of one
+  argument (positional or `ok=`) and its `.on(...)` chain, `nothing` / `as_bytes`, or a `_` reader function the module
+  defines. An UPPER_CASE reader name (`expect=FILING`) is now reported; a name only repeated its type, and a client's
+  tests call every method, so the import-time failure it bought was redundant. The type in `decoder`/`adapter` is a
+  type expression: a reader of a parameter, a local or a call is reported, as is an `Expect` root of two arguments or
+  wrapping a named reader. The constructor-call clause no longer reads `expect=`, which R3 governs. Both examples, the
+  conventions page and `SKILL.md` write readers at the call.
+
 ### Added
 
 - `headgate_verify.testing`, the test helpers any headgate client (and the worked examples) tests with, moved from

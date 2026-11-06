@@ -38,8 +38,8 @@ Do the steps in order. Each produces something the next one needs.
    [references/conventions.md](references/conventions.md#project-setup).
 3. **Write the models, then the module-level values, then the methods.** Models first (`models.py`: wire shapes with
    the API's field names, and a `<Endpoint>Params` `TypedDict` per endpoint's query). Then, at module level of
-   `client.py`: the base URL (a host with no path), the pace, every reader (`decoder(...)`, `Expect(...).on(...)`),
-   any writer and retry policy; pagers and page budgets go in `pagination.py`. Then the class, whose methods are each one statement forwarding
+   `client.py`: the base URL (a host with no path), the pace, any writer and retry policy (readers are written at the call:
+   `expect=decoder(...)`, `expect=Expect(...).on(...)`); pagers and page budgets go in `pagination.py`. Then the class, whose methods are each one statement forwarding
    to a headgate verb or `paginate`. Write the module docstring as you measure: dates, statuses, error bodies, limits,
    terms, and what you did not measure. The full rules are in [references/conventions.md](references/conventions.md),
    and the method names in [references/naming.md](references/naming.md): the spec's `operationId` where the gate

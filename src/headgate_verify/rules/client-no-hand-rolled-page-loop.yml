@@ -30,7 +30,7 @@ language: python
 severity: error
 message: a page walk is `self.paginate(...)`, never a hand-written loop
 note: >-
-  Return `self.paginate(path, expect=READER, pages=PAGES, limit=MAX_PAGES)` from a sync method, with the pager
+  Return `self.paginate(path, expect=decoder(Page), pages=PAGES, limit=MAX_PAGES)` from a sync method, with the pager
   (`NextUrl`, `Cursor`, `Offset`, `LinkHeader`) and the `PageLimit` as module-level values.
 utils:
   verb: {regex: '^(delete|get|head|patch|post|put|_request|_exchange)$'}

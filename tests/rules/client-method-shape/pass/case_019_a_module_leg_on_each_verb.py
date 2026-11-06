@@ -1,18 +1,17 @@
 # A module leg on each verb.
 # Readers moved to module level (R3).
-ACK = decoder(Ack)
 
 
 async def _post(client: AsyncBaseClient, path: str) -> Ack:
-    return await client.post(path, expect=ACK)
+    return await client.post(path, expect=decoder(Ack))
 
 
 async def _put(client: AsyncBaseClient, path: str) -> Ack:
-    return await client.put(path, expect=ACK)
+    return await client.put(path, expect=decoder(Ack))
 
 
 async def _patch(client: AsyncBaseClient, path: str) -> Ack:
-    return await client.patch(path, expect=ACK)
+    return await client.patch(path, expect=decoder(Ack))
 
 
 async def _delete(client: AsyncBaseClient, path: str) -> None:

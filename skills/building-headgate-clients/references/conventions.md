@@ -95,20 +95,23 @@ keeps them in one package, one class per host (the Open-Meteo example).
 
 ## Module-level values
 
-Everything a method passes besides its own arguments is built once, at import, at module level, so a bad declaration
-fails when the module loads, not on the first call:
+Writers, retry policies, pagers and page budgets are built once, at import, at module level:
 
 ```python
-FILINGS = decoder(Page[Filing])  # a reader
-FILING = decoder(Filing)
-FILING_OR_NONE = Expect(FILING).on(HTTPStatus.NOT_FOUND, nothing)  # a documented answer
 NEW_ORDER = encoder(NewOrderBody)  # a writer
 ORDER_RETRY = RetryPolicy(attempts=1)  # a non-idempotent write's retry policy
 ```
 
-Pagers and page budgets live in `pagination.py` (below). In a method, `expect=`, `pages=` and `limit=` are bare
-UPPER_CASE names the module binds; a call there (`expect=decoder(Filing)`, `expect=Expect(...)`) is reported by
-`client-method-shape`. headgate's own `nothing` (and, in a private leg, `as_bytes`) may be passed to `expect=` by name. `retry=` and
+**Readers are the exception: a reader is written at the call**, in `expect=`, so a method says what it decodes without
+a jump to the top of the module: `expect=decoder(Page[Filing])`, `expect=decoder(Quote, strict=False)`,
+`expect=body_reader(decode_feed)`, `expect=Expect(decoder(Filing)).on(HTTPStatus.NOT_FOUND, nothing)`. A name for one
+would only repeat its type, and the client's tests call every method, so a type the codec cannot read still fails
+before release. The type in `decoder(...)`/`adapter(...)` is a type expression, never a parameter or a local
+(`decoder(model)` is a reader built per call). headgate's own `nothing` (and, in a private leg, `as_bytes`), and a `_` reader function
+the module defines (`expect=_placed_or_declined`), are passed by name.
+
+Pagers and page budgets live in `pagination.py` (below). In a method, `pages=` and `limit=` are bare UPPER_CASE names
+the module binds; a module-level reader name in `expect=` (`expect=FILING`) is reported by `client-method-shape`. `retry=` and
 `deadline=` take such a name, a literal or a parameter of the method; `timeout=` takes such a name or a parameter
 (headgate takes a `Timeouts`, so one built at the call is a module constant instead). Path constants are module-level too, never class attributes (`client-path-constants-at-module-level`); a name
 ending `_URL` holds an absolute URL, a relative one ends `_PATH` (`client-url-suffix-means-absolute`).
@@ -122,18 +125,20 @@ ending `_URL` holds an absolute URL, a relative one ends `_PATH` (`client-url-su
   ```python
   async def get_filing(self, filing_uuid: str) -> Filing | None:
       """Return the filing ``filing_uuid``, or ``None`` when there is none."""
-      return await self.get(t"api/v1/filings/{filing_uuid}/", expect=FILING_OR_NONE)
+      return await self.get(
+          t"api/v1/filings/{filing_uuid}/", expect=Expect(decoder(Filing)).on(HTTPStatus.NOT_FOUND, nothing)
+      )
 
 
   async def get_forecast(self, **params: Unpack[ForecastParams]) -> Forecast:
       """Return the forecast at ``params``' location."""
-      return await self.get("v1/forecast", params=params, expect=FORECAST)
+      return await self.get("v1/forecast", params=params, expect=decoder(Forecast))
   ```
 
   A write that returns nothing is annotated `-> None` and passes headgate's `nothing` reader:
   `await self.delete(t"v2/watchlists/{watchlist_id}", expect=nothing)` (every verb but `head()` needs `expect=`, and
   `client-method-returns` asks a `-> None` method for `expect=nothing`). A write's body goes through a module-level
-  writer: `return await self.post("v2/orders", body=NEW_ORDER(order), expect=ORDER, retry=ORDER_RETRY)`.
+  writer: `return await self.post("v2/orders", body=NEW_ORDER(order), expect=decoder(Order), retry=ORDER_RETRY)`.
 - **Path parameters are positional arguments** interpolated into a t-string. Query parameters arrive as
   `**params: Unpack[<Endpoint>Params]` and are forwarded as `params=params`; never a `params` mapping argument.
   The collector reaches the wire untouched, in every module and through every leg: not rebound or mutated, not
@@ -164,12 +169,14 @@ ending `_URL` holds an absolute URL, a relative one ends `_PATH` (`client-url-su
 
 ## Documented answers
 
-A documented non-2xx response that means something ("no such filing") is declared at module level, next to the reader
-it extends, and the method returns `<Type> | None`:
+A documented non-2xx response that means something ("no such filing") is declared at the call, on the reader it
+extends, and the method returns `<Type> | None`:
 
 ```python
-FILING_OR_NONE = Expect(FILING).on(HTTPStatus.NOT_FOUND, nothing)  # an unknown uuid
+expect = Expect(decoder(Filing)).on(HTTPStatus.NOT_FOUND, nothing)  # an unknown uuid
 ```
+
+The `Expect` root takes one reader, positional or `ok=`.
 
 The status is an `int` literal or an `HTTPStatus` member, never computed (`client-answer-status-is-literal`). Declare
 only what the API documents or you measured; every other status raises a headgate error (`UpstreamStatusError`,
@@ -182,7 +189,9 @@ A paged list is a plain (sync) `def` whose one statement returns headgate's lazy
 ```python
 def get_filings(self, **params: Unpack[FilingsParams]) -> Paginated[Page[Filing], Filing]:
     """Walk the filings that match ``params``, page by page as iterated."""
-    return self.paginate("api/v1/filings/", params=params, expect=FILINGS, pages=FILING_PAGES, limit=PAGE_LIMIT)
+    return self.paginate(
+        "api/v1/filings/", params=params, expect=decoder(Page[Filing]), pages=FILING_PAGES, limit=PAGE_LIMIT
+    )
 ```
 
 - `pages=` is a pager matching the API's own paging (`NextUrl` over a body's `next` URL, `Cursor`, `Offset`,

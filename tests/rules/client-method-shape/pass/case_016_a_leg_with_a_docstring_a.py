@@ -1,6 +1,5 @@
 # A leg with a docstring; a module leg without one; a `**kwargs: Any` pass-through is not a collector.
 # Readers moved to module level (R3).
-SERIES_RESPONSE = decoder(SeriesResponse)
 
 
 async def _fetch_feed(client: AsyncBaseClient, path: str) -> bytes:
@@ -14,7 +13,7 @@ class Series(AsyncBaseClient):
 
     async def _series(self, dataset: str, **params: Unpack[SeriesParams]) -> SeriesResponse:
         """The shared leg of the seven dataset methods."""
-        return await self.get(t"{dataset}/series", params=params, expect=SERIES_RESPONSE)
+        return await self.get(t"{dataset}/series", params=params, expect=decoder(SeriesResponse))
 
     async def fetch_feed_bytes(self) -> bytes:
         return await _fetch_feed(self, "feed/")

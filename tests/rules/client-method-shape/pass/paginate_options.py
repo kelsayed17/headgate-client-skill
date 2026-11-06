@@ -1,6 +1,5 @@
 # Every option headgate 0.7.0's paginate takes besides the body ones (PageOptions): headers, idempotency_key, timeout,
 # deadline, follow_redirects, cache_ttl and retry.
-X_PAGE = decoder(XPage)
 
 
 class C(AsyncBaseClient):
@@ -17,7 +16,7 @@ class C(AsyncBaseClient):
             follow_redirects=False,
             cache_ttl=60.0,
             retry=False,
-            expect=X_PAGE,
+            expect=decoder(XPage),
             pages=X_PAGES,
             limit=MAX_PAGES,
         )

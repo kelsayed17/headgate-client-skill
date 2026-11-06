@@ -52,14 +52,15 @@
 #
 # 3. In a CLIENT MODULE: a module-level alias of such a type (`Payload = Any`, `Payload = typing.Any`,
 #    `type Blob = dict[str, Any]`, `Maybe = A | None`); and an untyped `decoder(...)` anywhere the public method's own
-#    report does not cover (a private leg, and, since readers are declared at module level, a module-level
-#    `READER = decoder(Any)` or an answer decoding into a bare dict).
+#    report does not cover (a private leg, a module-level `READER = decoder(Any)` that client-method-shape R3 reports
+#    when a method names it, or an answer decoding into a bare dict).
 #
 # EXEMPTION: `# headgate-verify: allow client-method-returns -- <reason>` on the `def` line.
 #
 # PORTED from the source rule of the same name, with these changes:
-#   * readers are module-level values (R3), so an UPPER_CASE `expect=` name is followed to the module-level value it
-#     names, for the house-reader, `as_bytes` and `None` checks; an imported one is taken on trust;
+#   * an UPPER_CASE `expect=` name (which client-method-shape R3 reports: readers are written at the call) is still
+#     followed to the module-level value it names, for the house-reader, `as_bytes` and `None` checks, so a client
+#     mid-migration gets one report, not two; an imported one is taken on trust;
 #   * a chain's status may be an `HTTPStatus.<NAME>` member as well as an int literal, and an answer may be `nothing`
 #     (spec: a documented 404 declared as `Expect(READER).on(HTTPStatus.NOT_FOUND, nothing)`), so `T | None` is
 #     allowed exactly when the reader declares such an answer;

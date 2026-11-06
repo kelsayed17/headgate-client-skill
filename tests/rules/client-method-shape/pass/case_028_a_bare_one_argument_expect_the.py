@@ -4,9 +4,7 @@
 # aliased import.
 # Readers moved to module level (R3).
 X = Expect(decoder(X))
-ACK = decoder(Ack)
 Z = decoder(Z)
-INT = decoder(int)
 
 
 import datetime as dt
@@ -14,20 +12,20 @@ import datetime as dt
 
 class More(AsyncBaseClient):
     async def get_x(self) -> X:
-        return await self.get("x", expect=X)
+        return await self.get("x", expect=Expect(decoder(X)))
 
     async def upload(self, blob: bytes, files: Files, idempotency_key: str) -> Ack:
-        return await self.post("up", content=blob, files=files, idempotency_key=idempotency_key, expect=ACK)
+        return await self.post("up", content=blob, files=files, idempotency_key=idempotency_key, expect=decoder(Ack))
 
     async def fetch_bulk(self) -> bytes:
         return await self.get("bulk.zip", expect=as_bytes, timeout=LONG_READ, deadline=None)
 
     async def get_z(self, timeout=30.0) -> Z:
-        return await self.get("z", timeout=timeout, expect=Z)
+        return await self.get("z", timeout=timeout, expect=decoder(Z))
 
     @property
     def count(self) -> int:
         return self._state._count
 
     async def _count(self) -> int:
-        return await self.get("count", expect=INT)
+        return await self.get("count", expect=decoder(int))
