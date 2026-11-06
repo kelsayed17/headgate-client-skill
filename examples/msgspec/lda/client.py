@@ -90,21 +90,6 @@ ride a hole, and the base URL carries no path."""
 PACE = Rate.per_second(0.1)
 """One request every 10 seconds, with no burst: a rate below one a second still allows one request at a time."""
 
-# Readers: built once, at import, where a bad declaration fails.
-FILINGS = decoder(Page[Filing])
-FILING = decoder(Filing)
-FILING_OR_NONE = Expect(FILING).on(HTTPStatus.NOT_FOUND, nothing)  # an unknown uuid
-CONTRIBUTIONS = decoder(Page[ContributionReport])
-CONTRIBUTION = decoder(ContributionReport)
-REGISTRANTS = decoder(Page[Registrant])
-REGISTRANT = decoder(Registrant)
-CLIENTS = decoder(Page[Client])
-CLIENT = decoder(Client)
-LOBBYISTS = decoder(Page[LobbyistWithRegistrant])
-LOBBYIST = decoder(LobbyistWithRegistrant)
-CONSTANTS = decoder(list[Constant])
-GOVERNMENT_ENTITIES = decoder(list[GovernmentEntity])
-
 
 class LdaClient(AsyncBaseClient):
     """Read lda.gov's filings, contribution reports, registrants, clients, lobbyists and constants lists."""
@@ -126,82 +111,100 @@ class LdaClient(AsyncBaseClient):
 
     def get_filings(self, **params: Unpack[FilingsParams]) -> Paginated[Page[Filing], Filing]:
         """Walk the LD-1 registrations and LD-2 reports that match ``params``, page by page as iterated."""
-        return self.paginate("api/v1/filings/", params=params, expect=FILINGS, pages=FILING_PAGES, limit=PAGE_LIMIT)
+        return self.paginate(
+            "api/v1/filings/", params=params, expect=decoder(Page[Filing]), pages=FILING_PAGES, limit=PAGE_LIMIT
+        )
 
     async def get_filing(self, filing_uuid: str) -> Filing | None:
         """Return the filing ``filing_uuid``, or ``None`` when there is none."""
-        return await self.get(t"api/v1/filings/{filing_uuid}/", expect=FILING_OR_NONE)
+        return await self.get(
+            t"api/v1/filings/{filing_uuid}/", expect=Expect(decoder(Filing)).on(HTTPStatus.NOT_FOUND, nothing)
+        )
 
     def get_contributions(
         self, **params: Unpack[ContributionsParams]
     ) -> Paginated[Page[ContributionReport], ContributionReport]:
         """Walk the LD-203 contribution reports that match ``params``, page by page as iterated."""
         return self.paginate(
-            "api/v1/contributions/", params=params, expect=CONTRIBUTIONS, pages=CONTRIBUTION_PAGES, limit=PAGE_LIMIT
+            "api/v1/contributions/",
+            params=params,
+            expect=decoder(Page[ContributionReport]),
+            pages=CONTRIBUTION_PAGES,
+            limit=PAGE_LIMIT,
         )
 
     async def get_contribution(self, filing_uuid: str) -> ContributionReport:
         """Return the contribution report ``filing_uuid``."""
-        return await self.get(t"api/v1/contributions/{filing_uuid}/", expect=CONTRIBUTION)
+        return await self.get(t"api/v1/contributions/{filing_uuid}/", expect=decoder(ContributionReport))
 
     def get_registrants(self, **params: Unpack[RegistrantsParams]) -> Paginated[Page[Registrant], Registrant]:
         """Walk the registrants that match ``params``, page by page as iterated."""
         return self.paginate(
-            "api/v1/registrants/", params=params, expect=REGISTRANTS, pages=REGISTRANT_PAGES, limit=PAGE_LIMIT
+            "api/v1/registrants/",
+            params=params,
+            expect=decoder(Page[Registrant]),
+            pages=REGISTRANT_PAGES,
+            limit=PAGE_LIMIT,
         )
 
     async def get_registrant(self, registrant_id: int) -> Registrant:
         """Return the registrant ``registrant_id``."""
-        return await self.get(t"api/v1/registrants/{registrant_id}/", expect=REGISTRANT)
+        return await self.get(t"api/v1/registrants/{registrant_id}/", expect=decoder(Registrant))
 
     def get_clients(self, **params: Unpack[ClientsParams]) -> Paginated[Page[Client], Client]:
         """Walk the clients that match ``params``, each with its registrant, page by page as iterated."""
-        return self.paginate("api/v1/clients/", params=params, expect=CLIENTS, pages=CLIENT_PAGES, limit=PAGE_LIMIT)
+        return self.paginate(
+            "api/v1/clients/", params=params, expect=decoder(Page[Client]), pages=CLIENT_PAGES, limit=PAGE_LIMIT
+        )
 
     async def get_client(self, client_id: int) -> Client:
         """Return the client ``client_id`` with its registrant."""
-        return await self.get(t"api/v1/clients/{client_id}/", expect=CLIENT)
+        return await self.get(t"api/v1/clients/{client_id}/", expect=decoder(Client))
 
     def get_lobbyists(
         self, **params: Unpack[LobbyistsParams]
     ) -> Paginated[Page[LobbyistWithRegistrant], LobbyistWithRegistrant]:
         """Walk the lobbyists that match ``params``, each with its registrant, page by page as iterated."""
         return self.paginate(
-            "api/v1/lobbyists/", params=params, expect=LOBBYISTS, pages=LOBBYIST_PAGES, limit=PAGE_LIMIT
+            "api/v1/lobbyists/",
+            params=params,
+            expect=decoder(Page[LobbyistWithRegistrant]),
+            pages=LOBBYIST_PAGES,
+            limit=PAGE_LIMIT,
         )
 
     async def get_lobbyist(self, lobbyist_id: int) -> LobbyistWithRegistrant:
         """Return the lobbyist ``lobbyist_id`` with their registrant."""
-        return await self.get(t"api/v1/lobbyists/{lobbyist_id}/", expect=LOBBYIST)
+        return await self.get(t"api/v1/lobbyists/{lobbyist_id}/", expect=decoder(LobbyistWithRegistrant))
 
     async def get_constants_filing_filingtypes(self) -> list[Constant]:
         """Return the filing types (``RR`` registration, ``Q1`` first-quarter report, …)."""
-        return await self.get("api/v1/constants/filing/filingtypes/", expect=CONSTANTS)
+        return await self.get("api/v1/constants/filing/filingtypes/", expect=decoder(list[Constant]))
 
     async def get_constants_filing_lobbyingactivityissues(self) -> list[Constant]:
         """Return the general lobbying issue codes (``ACC`` accounting, ``AGR`` agriculture, …)."""
-        return await self.get("api/v1/constants/filing/lobbyingactivityissues/", expect=CONSTANTS)
+        return await self.get("api/v1/constants/filing/lobbyingactivityissues/", expect=decoder(list[Constant]))
 
     async def get_constants_filing_governmententities(self) -> list[GovernmentEntity]:
         """Return the government bodies a lobbying activity can name, keyed by ``id``."""
-        return await self.get("api/v1/constants/filing/governmententities/", expect=GOVERNMENT_ENTITIES)
+        return await self.get("api/v1/constants/filing/governmententities/", expect=decoder(list[GovernmentEntity]))
 
     async def get_constants_general_countries(self) -> list[Constant]:
         """Return the country codes."""
-        return await self.get("api/v1/constants/general/countries/", expect=CONSTANTS)
+        return await self.get("api/v1/constants/general/countries/", expect=decoder(list[Constant]))
 
     async def get_constants_general_states(self) -> list[Constant]:
         """Return the U.S. state codes."""
-        return await self.get("api/v1/constants/general/states/", expect=CONSTANTS)
+        return await self.get("api/v1/constants/general/states/", expect=decoder(list[Constant]))
 
     async def get_constants_lobbyist_prefixes(self) -> list[Constant]:
         """Return the name prefixes a lobbyist may have (``dr``, ``mr``, …)."""
-        return await self.get("api/v1/constants/lobbyist/prefixes/", expect=CONSTANTS)
+        return await self.get("api/v1/constants/lobbyist/prefixes/", expect=decoder(list[Constant]))
 
     async def get_constants_lobbyist_suffixes(self) -> list[Constant]:
         """Return the name suffixes a lobbyist may have."""
-        return await self.get("api/v1/constants/lobbyist/suffixes/", expect=CONSTANTS)
+        return await self.get("api/v1/constants/lobbyist/suffixes/", expect=decoder(list[Constant]))
 
     async def get_constants_contribution_itemtypes(self) -> list[Constant]:
         """Return the contribution item types (``feca``, ``he`` honorary expenses, …)."""
-        return await self.get("api/v1/constants/contribution/itemtypes/", expect=CONSTANTS)
+        return await self.get("api/v1/constants/contribution/itemtypes/", expect=decoder(list[Constant]))

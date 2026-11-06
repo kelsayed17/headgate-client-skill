@@ -1,9 +1,7 @@
 # Comments inside a delegate's arguments, a header helper's arguments, and a base list; `retry=True`.
 # Readers moved to module level (R3); the envelope legs are plain forwards here.
-TOOL_RESULT = decoder(ToolResult)
 
 
-ACCOUNT = decoder(Account)
 
 
 class HostClient(
@@ -11,7 +9,7 @@ class HostClient(
 ):
     # a comment in the class body
     async def _call_tool[T](self, name: str, arguments: Args, payload: type[T], *, retry: bool = True) -> T:
-        return await self.post(t"tools/{name}", body=_WRITE(arguments), expect=TOOL_RESULT, retry=retry)
+        return await self.post(t"tools/{name}", body=_WRITE(arguments), expect=decoder(ToolResult), retry=retry)
 
     async def get_portfolio(self, arguments: AccountScopedArguments) -> PortfolioPayload:
         return await self._call_tool(
@@ -27,5 +25,5 @@ class HostClient(
             headers=self._uid(
                 user_id,  # the acting user
             ),
-            expect=ACCOUNT,
+            expect=decoder(Account),
         )

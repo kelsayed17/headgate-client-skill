@@ -77,16 +77,16 @@ MUTATIONS = [
                 "client.py",
                 '''    async def get_constants_lobbyist_prefixes(self) -> list[Constant]:
         """Return the name prefixes a lobbyist may have (``dr``, ``mr``, …)."""
-        return await self.get("api/v1/constants/lobbyist/prefixes/", expect=CONSTANTS)
+        return await self.get("api/v1/constants/lobbyist/prefixes/", expect=decoder(list[Constant]))
 
     async def get_constants_lobbyist_suffixes(self) -> list[Constant]:
         """Return the name suffixes a lobbyist may have."""
-        return await self.get("api/v1/constants/lobbyist/suffixes/", expect=CONSTANTS)
+        return await self.get("api/v1/constants/lobbyist/suffixes/", expect=decoder(list[Constant]))
 ''',
                 '''    async def get_constants_lobbyist(self) -> tuple[list[Constant], list[Constant]]:
         """Return the name prefixes and the name suffixes a lobbyist may have."""
-        prefixes = await self.get("api/v1/constants/lobbyist/prefixes/", expect=CONSTANTS)
-        suffixes = await self.get("api/v1/constants/lobbyist/suffixes/", expect=CONSTANTS)
+        prefixes = await self.get("api/v1/constants/lobbyist/prefixes/", expect=decoder(list[Constant]))
+        suffixes = await self.get("api/v1/constants/lobbyist/suffixes/", expect=decoder(list[Constant]))
         return prefixes, suffixes
 ''',
             ),
@@ -99,9 +99,11 @@ MUTATIONS = [
         (
             Edit(
                 "client.py",
-                '        return await self.get(t"api/v1/filings/{filing_uuid}/", expect=FILING_OR_NONE)',
+                """        return await self.get(
+            t"api/v1/filings/{filing_uuid}/", expect=Expect(decoder(Filing)).on(HTTPStatus.NOT_FOUND, nothing)
+        )""",
                 """        try:
-            return await self.get(t"api/v1/filings/{filing_uuid}/", expect=FILING)
+            return await self.get(t"api/v1/filings/{filing_uuid}/", expect=decoder(Filing))
         except Exception:
             return None""",
             ),
@@ -114,9 +116,9 @@ MUTATIONS = [
         (
             Edit(
                 "client.py",
-                '        return await self.get("api/v1/constants/general/states/", expect=CONSTANTS)',
+                '        return await self.get("api/v1/constants/general/states/", expect=decoder(list[Constant]))',
                 """        try:
-            return await self.get("api/v1/constants/general/states/", expect=CONSTANTS)
+            return await self.get("api/v1/constants/general/states/", expect=decoder(list[Constant]))
         except UpstreamStatusError:
             return []""",
             ),

@@ -82,10 +82,6 @@ PACE = Rate.per_second(1)
 MAX_IN_FLIGHT = 5
 """The most requests the free API takes in flight from one client (IP address) before it answers ``429``."""
 
-# Readers: built once, at import, where a bad declaration fails.
-FORECAST = decoder(Forecast)
-WEATHER = decoder(Weather)
-
 
 def free_api_budget() -> RateBudget:
     """Return a budget for the free API's per-IP limits, to share between a ``ForecastClient`` and an ``ArchiveClient``.
@@ -118,7 +114,7 @@ class ForecastClient(AsyncBaseClient):
 
     async def get_forecast(self, **params: Unpack[ForecastParams]) -> Forecast:
         """Return the forecast at ``params``' location, with the blocks and variables it names."""
-        return await self.get("v1/forecast", params=params, expect=FORECAST)
+        return await self.get("v1/forecast", params=params, expect=decoder(Forecast))
 
 
 class ArchiveClient(AsyncBaseClient):
@@ -144,4 +140,4 @@ class ArchiveClient(AsyncBaseClient):
 
     async def get_archive(self, **params: Unpack[ArchiveParams]) -> Weather:
         """Return the weather at ``params``' location from ``start_date`` to ``end_date``, with the variables named."""
-        return await self.get("v1/archive", params=params, expect=WEATHER)
+        return await self.get("v1/archive", params=params, expect=decoder(Weather))

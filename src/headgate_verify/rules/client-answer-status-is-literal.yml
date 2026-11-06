@@ -2,8 +2,9 @@
 # computed value or a name. A status the verifier cannot read as written is a claim nobody can check against the API's
 # documentation.
 #
-# Scope: every module of the package. Documented answers are declared at module level, beside the reader they extend
-# (`FILING_OR_NONE = Expect(FILING).on(HTTPStatus.NOT_FOUND, nothing)`), so a claim is read wherever it is written.
+# Scope: every module of the package. Documented answers are declared at the call, on the reader they extend
+# (`expect=Expect(decoder(Filing)).on(HTTPStatus.NOT_FOUND, nothing)`, client-method-shape R3), and a claim is read
+# wherever it is written.
 #
 # A claim is either spelling headgate's `Expect` takes:
 #   * `.on(status, read)` on an Expect CHAIN: `Expect(...)` (also `<module>.Expect(...)` and `Expect[T](...)`), a
@@ -30,8 +31,8 @@ language: python
 severity: error
 message: a documented answer claims its status as an int literal or an HTTPStatus member
 note: >-
-  Write `Expect(READER).on(HTTPStatus.NOT_FOUND, nothing)` (or `.on(404, ...)`), at module level beside the reader it
-  extends, never a status computed or named by a constant.
+  Write `Expect(decoder(Type)).on(HTTPStatus.NOT_FOUND, nothing)` (or `.on(404, ...)`) in the method's `expect=`,
+  never a status computed or named by a constant.
 utils:
   # An argument passed by position: anything in the list but a keyword, a `**` spread or a comment.
   positional:

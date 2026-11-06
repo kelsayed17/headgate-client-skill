@@ -1,6 +1,5 @@
 # A private base defined in this file, and concrete subclasses carrying only a private ClassVar.
 # Readers moved to module level (R3).
-QUOTES_RESPONSE = decoder(QuotesResponse)
 
 
 class _TradierBase(AsyncBaseClient):
@@ -12,7 +11,7 @@ class _TradierBase(AsyncBaseClient):
         super().__init__(base_url=self._BASE, rate=Rate.per_minute(_MAX_RATE_PER_MIN))
 
     async def get_quotes(self, **params: Unpack[QuotesParams]) -> QuotesResponse:
-        return await self.get("v1/markets/quotes", params=params, expect=QUOTES_RESPONSE)
+        return await self.get("v1/markets/quotes", params=params, expect=decoder(QuotesResponse))
 
 
 class TradierClient(_TradierBase):

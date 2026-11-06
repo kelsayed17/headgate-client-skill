@@ -57,7 +57,7 @@
 # `self.stream(...)` in (g), is
 # reported when its arguments contain, at any depth: an `await`; a public `self.<name>` (called or not); a
 # comprehension, generator or lambda; a walrus; a dict literal; a `*` or `**` splat; a call to a capitalised name
-# (`Model(...)`, `httpx2.Timeout(...)`) anywhere in a keyword value other than `body=`. Its keywords are only the ones
+# (`Model(...)`, `httpx2.Timeout(...)`) anywhere in a keyword value other than `body=` and `expect=` (R3). Its keywords are only the ones
 # headgate 0.7.0's verbs take (`RequestOptions` plus the verb's own): `params`, `body`, `json`, `data`, `content`,
 # `files`, `headers`, `idempotency_key`, `expect`, `retry`, `timeout`, `deadline`, `follow_redirects` and
 # `cache_ttl` (not `auth=`, `cookies=`, `extensions=`, a typo, or paginate's `pages=`/`limit=`). The knobs
@@ -68,12 +68,16 @@
 # a module constant, fixed at import. `timeout` is a parameter or such a name only: headgate takes a `Timeouts`, never
 # a number, and a `Timeouts(...)` built at the call is a value computed per call, so it is a module constant.
 #
-# `expect=` (R3) is a bare UPPER_CASE name, public or `_`-prefixed, that the module binds at module level (an
-# assignment, annotated or not, or an import, aliased or not), or one of headgate's own readers `nothing` and
-# `as_bytes`. Readers are module-level values built at import, so a bad declaration fails at import, not on the
-# first call: `decoder(Foo)`, `Expect(...)`, `Expect(FOO).on(...)` or any other call there is reported, as is a
-# lowercase or dotted name, or an UPPER_CASE name the module does not bind (a parameter, a local). `head()` may omit
-# `expect=` (headgate reads `nothing` then). This rule does not check that the name IS a reader: client-method-returns
+# `expect=` (R3) is a reader written at the call, never a module-level name: `decoder(<type>)` / `adapter(<type>)`
+# (keywords such as `strict=False` or `refusal_check=` allowed), `body_reader(...)`, an `Expect(<reader>)` root of ONE
+# argument (positional or `ok=`) and its `.on(...)` chain, headgate's `nothing` and `as_bytes`, or a `_` reader
+# function the module defines, passed by its own name. The type in `decoder`/`adapter` is a type expression (CapWords
+# or builtin names, a dotted model, a subscript, a `|` union, no call): `decoder(payload)` is a reader built per call
+# from a parameter. A method then says what it decodes where it is read, and the client's tests, which call every
+# method, are where a type the codec cannot read fails. Reported: an UPPER_CASE reader name (`expect=FILING`), a
+# lowercase or dotted name other than those, an `Expect` root of two arguments or wrapping a named reader, and any
+# other call.
+# `head()` may omit `expect=` (headgate reads `nothing` then). This rule does not check that the name IS a reader: client-method-returns
 # is what catches a non-reader UPPER_CASE name (such as `BASE_URL`) passed as `expect=`.
 #
 # Each REQUEST keyword is FORWARDED, where "a request parameter" means a parameter NAME of the method (not a type in
@@ -131,8 +135,9 @@
 # one of the forms above.
 #
 # PORTED from the source rule of the same name, with these changes:
-#   * `expect=` (R3) must be a bare UPPER_CASE module-level name (or `nothing`/`as_bytes`); the source accepted
-#     `decoder(...)` and a one-argument `Expect(...)` chain inline, and left the reader to client-method-returns;
+#   * `expect=` (R3) is a reader written at the call and never a module-level name, as in the source (which accepted
+#     `decoder(...)` and a one-argument `Expect(...)` chain inline and left the reader to client-method-returns); this
+#     rule also checks the reader's shape: a type expression in `decoder`/`adapter`, one argument in `Expect`;
 #   * the JSON-RPC envelope leg (one provider's shape: a leg that built one `MCPToolCall` and forwarded it) is gone,
 #     so an envelope leg no longer conforms;
 #   * a walk (e) takes paginate's own keywords and needs `limit=` as well as `pages=` (the source required neither
@@ -181,9 +186,10 @@ language: python
 severity: error
 message: a public client method is one forward of the request it was handed, or exempted with a reason
 note: >-
-  One public method is one endpoint: a single `return await self.<verb>(path, params=params, expect=READER)`
-  forwarding its parameters, its reader a module-level UPPER_CASE name; a paged GET is a sync def returning
-  `self.paginate(path, expect=READER, pages=PAGES, limit=MAX_PAGES)`, a walk of POSTs passing
+  One public method is one endpoint: a single `return await self.<verb>(path, params=params, expect=decoder(Type))`
+  forwarding its parameters, its reader written at the call (`expect=decoder(Type)`,
+  `expect=Expect(decoder(Type)).on(404, nothing)`), never a module-level reader name; a paged GET is a sync def returning
+  `self.paginate(path, expect=decoder(Page), pages=PAGES, limit=MAX_PAGES)`, a walk of POSTs passing
   `PageRequest(path, body=request, write=WRITER)` as the path; a download is an async def whose one statement is
   `async with self.stream(path) as s:` over `async for c in s.aiter_bytes(): yield c`. Composition, deciding what an
   answer means and building the request belong above the client.
@@ -277,10 +283,70 @@ utils:
     all:
       - {kind: identifier, regex: '^_?[A-Z][A-Z0-9_]*$', pattern: $READER}
       - inside: {kind: module, stopBy: end, has: {matches: module-binding}}
-  ok-reader:
+  # A reader built at the call (R3): `decoder(...)`, `adapter(...)` or `body_reader(...)`, or an `Expect(...)` root and
+  # its `.on(...)` chain. The first argument of `decoder`/`adapter` is a type expression: every bare name in it is
+  # CapWords, a builtin type, or the module before a dot (`models.Filing`), and no call sits inside it, so a reader of a
+  # parameter or a local (`decoder(payload)`) is reported. Keywords (`strict=False`, `refusal_check=`) are the reader's.
+  type-argument:
+    all:
+      - any: [{kind: identifier}, {kind: attribute}, {kind: subscript}, {kind: binary_operator}]
+      - not: {has: {stopBy: end, kind: call}}
+      - not:
+          has:
+            stopBy: end
+            kind: identifier
+            regex: '^[a-z_]'
+            not:
+              any:
+                - {regex: '^(int|str|float|bool|bytes|list|dict|tuple|set|frozenset|object)$'}
+                - {inside: {kind: attribute, field: object}}
+      - not:
+          all:
+            - {kind: identifier, regex: '^[a-z_]'}
+            - not: {regex: '^(int|str|float|bool|bytes|list|dict|tuple|set|frozenset|object)$'}
+  # A plain reader: `decoder(<type>)` / `adapter(<type>)` (keywords allowed), `body_reader(...)`, headgate's
+  # `nothing` / `as_bytes`, or a hand-written `_` reader function the module defines.
+  decoder-call:
+    kind: call
+    all:
+      - has: {field: function, kind: identifier, regex: '^(decoder|adapter)$'}
+      - has: {field: arguments, has: {nthChild: 1, matches: type-argument}}
+  # A hand-written reader: a `_` function the module defines, passed by its own name (`expect=_placed_or_declined`).
+  reader-function:
+    all:
+      - {kind: identifier, regex: '^_[a-z][a-z0-9_]*$', pattern: $READER}
+      - inside: {kind: module, stopBy: end, has: {kind: function_definition, has: {field: name, pattern: $READER}}}
+  plain-reader:
     any:
       - {kind: identifier, regex: '^(nothing|as_bytes)$'}
-      - matches: module-name
+      - matches: decoder-call
+      - {kind: call, has: {field: function, kind: identifier, regex: '^body_reader$'}}
+      - matches: reader-function
+  # An `Expect` root: ONE argument, positional or `ok=`, that is a plain reader (C1).
+  expect-root:
+    kind: call
+    all:
+      - has: {field: function, kind: identifier, regex: '^Expect$'}
+      - has:
+          field: arguments
+          all:
+            - not: {has: {nthChild: 2}}
+            - has:
+                nthChild: 1
+                any:
+                  - matches: plain-reader
+                  - {kind: keyword_argument, has: {field: name, regex: '^ok$'}, has: {field: value, matches: plain-reader}}
+  # An `.on(...)` chain whose every `Expect` call is a good root.
+  expect-chain:
+    kind: call
+    all:
+      - has: {field: function, kind: attribute, regex: '^Expect\(', has: {field: attribute, regex: '^on$'}}
+      - not: {has: {stopBy: end, kind: call, has: {field: function, kind: identifier, regex: '^Expect$'}, not: {matches: expect-root}}}
+  ok-reader:
+    any:
+      - matches: plain-reader
+      - matches: expect-root
+      - matches: expect-chain
   bad-expect:
     kind: keyword_argument
     has: {field: name, regex: '^expect$'}
@@ -347,8 +413,8 @@ utils:
         - has: {stopBy: end, kind: named_expression}
         - has: {stopBy: end, kind: dictionary}
         - has: {any: [{kind: dictionary_splat}, {kind: list_splat}]}
-        # A constructor in a keyword value; `body=` is a writer, checked by built-keyword.
-        - has: {kind: keyword_argument, not: {has: {field: name, regex: '^body$'}}, has: {field: value, any: [{matches: ctor-call}, {has: {stopBy: end, matches: ctor-call}}]}}
+        # A constructor in a keyword value; `body=` is a writer, checked by built-keyword, and `expect=` a reader (R3).
+        - has: {kind: keyword_argument, not: {has: {field: name, regex: '^(body|expect)$'}}, has: {field: value, any: [{matches: ctor-call}, {has: {stopBy: end, matches: ctor-call}}]}}
         - has: {matches: built-keyword}
         - has: {matches: bad-expect}
         # The transport knobs are a literal or a parameter.
