@@ -1,5 +1,6 @@
 # A decoded model, a list of them, a map of them, a generic model.
-# The same case with its readers moved to module level (R3).
+# The same case, its readers bound to UPPER_CASE module names: this rule takes a name bound to `decoder(...)` as a
+# decoded reader. client-method-shape reports this shape (R3); only this rule's verdict is pinned here.
 AGGS_ENVELOPE = decoder(AggsEnvelope)
 POSITION = decoder(list[Position])
 STR_SNAPSHOT = decoder(dict[str, Snapshot])
