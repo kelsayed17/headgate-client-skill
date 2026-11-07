@@ -98,3 +98,8 @@ exclude = ["tests/rules"]
 
 [tool.ty.rules]
 all = "error"
+
+[tool.uv]
+# Every released headgate (<=0.11.0) imports hishel.BaseFilter, which hishel 2 removed;
+# headgate main already requires hishel>=2. Drop this once a headgate release on hishel 2 ships.
+constraint-dependencies = ["hishel<2"]
